@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "skills": {
+    "find-docs": {
+      "source": "upstash/context7",
+      "commit": "b1e3611e32a8b1369ae526cacdf335ddfd6e5fbb",
+      "sourceType": "github",
+      "skillPath": "skills/find-docs/SKILL.md",
+      "computedHash": "80e435f2020187d04db0458a72f1c3cc0d5a16ab2d252bd06719a746136b89c1"
+    }
+  }
+}
