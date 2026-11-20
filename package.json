@@ -9,6 +9,7 @@
     "node": ">=22.19"
   },
   "scripts": {
+    "setup": "node src/setup.js",
     "test": "node --test"
   }
 }
