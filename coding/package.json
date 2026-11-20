@@ -8,6 +8,7 @@
     "package-lock.json",
     "CHANGELOG.md",
     "README.md",
+    ".agents/",
     "skills/",
     "prompts/",
     "themes/"
@@ -23,6 +24,7 @@
     ],
     "skills": [
       "./skills",
+      "./.agents/skills",
       "node_modules/*/skills",
       "node_modules/@*/*/skills"
     ],
