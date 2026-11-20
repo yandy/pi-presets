@@ -1,0 +1,21 @@
+{
+  "name": "@yandy/pi-presets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Named Pi package presets with a thin shell launcher",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19"
+  },
+  "scripts": {
+    "postinstall": "node src/install-presets.ts",
+    "setup": "node src/setup.ts",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  }
+}
