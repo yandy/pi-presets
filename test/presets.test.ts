@@ -8,7 +8,7 @@ import {
   expandPresetArgs,
   listPresets,
   PresetUsageError,
-} from '../src/presets.js';
+} from '../src/presets.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'pi-presets-core-'));
 for (const name of ['office', 'coding']) {
@@ -76,7 +76,7 @@ test('rejects unknown presets and reports sorted available names', () => {
   for (const name of ['missing', 'not-a-package']) {
     assert.throws(
       () => expandPresetArgs(['-ps', name], root),
-      (error) => {
+      (error: unknown) => {
         assert.ok(error instanceof PresetUsageError);
         assert.match(error.message, /coding/);
         assert.match(error.message, /office/);

@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
@@ -15,12 +15,18 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { installShellIntegration } from '../src/shell-integration.js';
+import { installShellIntegration } from '../src/shell-integration.ts';
 
-const setupPath = fileURLToPath(new URL('../src/setup.js', import.meta.url));
+const setupPath = fileURLToPath(new URL('../src/setup.ts', import.meta.url));
 const sourceDirectory = fileURLToPath(new URL('../src/', import.meta.url));
 
-function makeDirectories(t) {
+interface TestDirectories {
+  directory: string;
+  homeDir: string;
+  configHome: string;
+}
+
+function makeDirectories(t: TestContext): TestDirectories {
   const directory = mkdtempSync(join(tmpdir(), 'pi-presets-setup-'));
   const homeDir = join(directory, 'home');
   const configHome = join(homeDir, '.config');
@@ -42,7 +48,7 @@ test('installs fish integration into conf.d', (t) => {
   assert.ok(existsSync(expected));
 });
 
-for (const shell of ['bash', 'zsh']) {
+for (const shell of ['bash', 'zsh'] as const) {
   test(`installs ${shell} integration idempotently and preserves rc content`, (t) => {
     const directories = makeDirectories(t);
     const rcPath = join(directories.homeDir, `.${shell}rc`);
@@ -137,7 +143,7 @@ test('setup rejects unsupported shells and missing option values', (t) => {
   assert.match(missing.stderr, /--shell requires/i);
 });
 
-for (const shell of ['fish', 'bash', 'zsh']) {
+for (const shell of ['fish', 'bash', 'zsh'] as const) {
   const shellLookup = spawnSync(
     'sh',
     ['-c', 'command -v "$1"', 'shell-lookup', shell],

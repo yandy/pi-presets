@@ -1,6 +1,6 @@
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { once } from 'node:events';
 import {
   chmodSync,
@@ -16,7 +16,7 @@ import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
-const cliPath = fileURLToPath(new URL('../src/cli.js', import.meta.url));
+const cliPath = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
 const recordingPi = String.raw`
@@ -36,7 +36,19 @@ process.stdin.on('end', () => {
 });
 `;
 
-function makeHarness(t, source = recordingPi) {
+interface Harness {
+  bin: string;
+  capture: string;
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+}
+
+interface RunOptions {
+  env?: NodeJS.ProcessEnv;
+  input?: string;
+}
+
+function makeHarness(t: TestContext, source: string = recordingPi): Harness {
   const directory = mkdtempSync(join(tmpdir(), 'pi-presets-cli-'));
   const bin = join(directory, 'bin');
   const cwd = join(directory, 'work');
@@ -60,7 +72,11 @@ function makeHarness(t, source = recordingPi) {
   };
 }
 
-function runCli(harness, args, options = {}) {
+function runCli(
+  harness: Harness,
+  args: readonly string[],
+  options: RunOptions = {},
+): SpawnSyncReturns<string> {
   return spawnSync(process.execPath, [cliPath, ...args], {
     cwd: harness.cwd,
     env: { ...harness.env, ...options.env },
@@ -164,8 +180,10 @@ setInterval(() => {}, 1000);
   });
   child.stdout.resume();
   child.stderr.resume();
+  const childPid = child.pid;
+  assert.ok(childPid !== undefined);
   t.after(() => {
-    try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already exited */ }
+    try { process.kill(-childPid, 'SIGKILL'); } catch { /* already exited */ }
   });
 
   let attempts = 0;
@@ -176,7 +194,7 @@ setInterval(() => {}, 1000);
   assert.ok(existsSync(ready), 'fake Pi did not become ready');
 
   const exited = once(child, 'exit');
-  process.kill(-child.pid, 'SIGINT');
+  process.kill(-childPid, 'SIGINT');
   const [code, signal] = await exited;
   assert.equal(code, 42);
   assert.equal(signal, null);

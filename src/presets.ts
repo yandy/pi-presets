@@ -4,13 +4,13 @@ import { join } from 'node:path';
 const VALID_NAME = /^[A-Za-z0-9._-]+$/;
 
 export class PresetUsageError extends Error {
-  constructor(message) {
+  constructor(message: string) {
     super(message);
     this.name = 'PresetUsageError';
   }
 }
 
-function isPreset(root, name) {
+function isPreset(root: string, name: string): boolean {
   try {
     return statSync(join(root, name)).isDirectory()
       && statSync(join(root, name, 'package.json')).isFile();
@@ -19,13 +19,13 @@ function isPreset(root, name) {
   }
 }
 
-export function listPresets(presetsRoot) {
+export function listPresets(presetsRoot: string): string[] {
   return readdirSync(presetsRoot)
     .filter((name) => isPreset(presetsRoot, name))
     .sort();
 }
 
-function resolvePreset(presetsRoot, name) {
+function resolvePreset(presetsRoot: string, name: string): string {
   if (!isPreset(presetsRoot, name)) {
     const available = listPresets(presetsRoot);
     const suffix = available.length > 0
@@ -36,7 +36,7 @@ function resolvePreset(presetsRoot, name) {
   return join(presetsRoot, name);
 }
 
-function parsePresetNames(value) {
+function parsePresetNames(value: string): string[] {
   const names = value.split(',').map((name) => name.trim());
   for (const name of names) {
     if (!VALID_NAME.test(name) || name === '.' || name === '..') {
@@ -46,7 +46,10 @@ function parsePresetNames(value) {
   return names;
 }
 
-export function expandPresetArgs(args, presetsRoot) {
+export function expandPresetArgs(
+  args: readonly string[],
+  presetsRoot: string,
+): string[] {
   const expanded = [];
 
   for (let index = 0; index < args.length; index += 1) {

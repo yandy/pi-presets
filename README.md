@@ -47,3 +47,12 @@ pi -e /path/to/somewhere/coding -e /path/to/somewhere/office
 也支持 `--preset coding`、`--preset=coding,office` 和重复使用 preset 参数。除 preset 参数外，其他参数、stdin/stdout、当前工作目录和 Pi 退出码均保持原样。
 
 未知的 preset 会在启动 Pi 前报错并列出可用名称。shell function 只在加载了对应配置的交互式 shell 中生效；独立脚本、未加载配置的子 shell 或其他程序直接启动 `pi` 时，请继续使用完整的 `pi -e /path/to/preset` 形式。
+
+## 开发
+
+实现和测试使用 TypeScript。Node 22.19 或更新版本直接运行可擦除的 `.ts` 语法，无需构建步骤；相对导入需要显式使用 `.ts` 后缀。
+
+```sh
+npm run typecheck
+npm test
+```

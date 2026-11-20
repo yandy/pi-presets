@@ -9,8 +9,13 @@
     "node": ">=22.19"
   },
   "scripts": {
-    "postinstall": "node src/install-presets.js",
-    "setup": "node src/setup.js",
-    "test": "node --test"
+    "postinstall": "node src/install-presets.ts",
+    "setup": "node src/setup.ts",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
   }
 }

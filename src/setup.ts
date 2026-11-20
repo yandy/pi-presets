@@ -6,13 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 import {
   installShellIntegration,
-  SUPPORTED_SHELLS,
-} from './shell-integration.js';
+  isSupportedShell,
+  type SupportedShell,
+} from './shell-integration.ts';
 
 class SetupUsageError extends Error {}
 
-function parseShell(args) {
-  let selected;
+function parseShell(args: readonly string[]): SupportedShell {
+  let selected: string | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument !== '--shell') {
@@ -26,7 +27,7 @@ function parseShell(args) {
   }
 
   const shell = selected ?? basename(process.env.SHELL ?? '');
-  if (!SUPPORTED_SHELLS.includes(shell)) {
+  if (!isSupportedShell(shell)) {
     throw new SetupUsageError(
       `Unsupported shell: ${shell || '(not set)'}. Choose fish, bash, or zsh.`,
     );
@@ -52,7 +53,8 @@ try {
   } else {
     console.log(`Restart ${shell} or run: source ${files[1]}`);
   }
-} catch (error) {
-  console.error(`pi-presets setup: ${error.message}`);
+} catch (error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`pi-presets setup: ${message}`);
   process.exitCode = error instanceof SetupUsageError ? 2 : 1;
 }

@@ -1,11 +1,32 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process';
+import { spawn, type SpawnOptions } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-function runProcess(command, args, options) {
+export type ProcessRunner = (
+  command: string,
+  args: string[],
+  options: SpawnOptions,
+) => Promise<void>;
+
+interface PresetManifest {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+}
+
+interface InstallPresetOptions {
+  repoRoot: string;
+  runner?: ProcessRunner;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function runProcess(command: string, args: string[], options: SpawnOptions): Promise<void> {
   return new Promise((resolveProcess, reject) => {
     const child = spawn(command, args, options);
     child.once('error', reject);
@@ -20,22 +41,25 @@ function runProcess(command, args, options) {
   });
 }
 
-function readManifest(directory, name) {
+function readManifest(directory: string, name: string): PresetManifest {
   try {
-    return JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
-  } catch (error) {
-    throw new Error(`Could not read preset "${name}" package.json: ${error.message}`, {
+    return JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as PresetManifest;
+  } catch (error: unknown) {
+    throw new Error(`Could not read preset "${name}" package.json: ${errorMessage(error)}`, {
       cause: error,
     });
   }
 }
 
-function hasDependencies(manifest) {
-  return ['dependencies', 'devDependencies', 'optionalDependencies']
+function hasDependencies(manifest: PresetManifest): boolean {
+  return (['dependencies', 'devDependencies', 'optionalDependencies'] as const)
     .some((field) => Object.keys(manifest[field] ?? {}).length > 0);
 }
 
-export async function installPresetDependencies({ repoRoot, runner = runProcess }) {
+export async function installPresetDependencies({
+  repoRoot,
+  runner = runProcess,
+}: InstallPresetOptions): Promise<string[]> {
   const names = readdirSync(repoRoot, { withFileTypes: true })
     .filter((entry) => entry.name !== 'node_modules' && entry.isDirectory())
     .map((entry) => entry.name)
@@ -52,8 +76,8 @@ export async function installPresetDependencies({ repoRoot, runner = runProcess 
     const command = existsSync(join(directory, 'package-lock.json')) ? 'ci' : 'install';
     try {
       await runner('npm', [command], { cwd: directory, stdio: 'inherit' });
-    } catch (error) {
-      throw new Error(`Dependency installation failed for preset "${name}": ${error.message}`, {
+    } catch (error: unknown) {
+      throw new Error(`Dependency installation failed for preset "${name}": ${errorMessage(error)}`, {
         cause: error,
       });
     }
@@ -72,8 +96,8 @@ if (invokedDirectly) {
     if (installed.length > 0) {
       console.log(`Installed dependencies for presets: ${installed.join(', ')}`);
     }
-  } catch (error) {
-    console.error(`pi-presets install: ${error.message}`);
+  } catch (error: unknown) {
+    console.error(`pi-presets install: ${errorMessage(error)}`);
     process.exitCode = 1;
   }
 }

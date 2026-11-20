@@ -10,11 +10,11 @@ import { constants as osConstants } from 'node:os';
 import { delimiter, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { expandPresetArgs, PresetUsageError } from './presets.js';
+import { expandPresetArgs, PresetUsageError } from './presets.ts';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
-function findRealPi(pathValue = '') {
+function findRealPi(pathValue: string = ''): string {
   for (const directory of pathValue.split(delimiter)) {
     const candidate = resolve(directory || '.', 'pi');
     try {
@@ -28,26 +28,28 @@ function findRealPi(pathValue = '') {
   throw new Error('Could not find an executable pi in PATH.');
 }
 
-function runPi(realPi, args) {
+function runPi(realPi: string, args: readonly string[]): Promise<number> {
   return new Promise((resolveExit, reject) => {
-    const child = spawn(realPi, args, {
+    const child = spawn(realPi, [...args], {
       cwd: process.cwd(),
       env: process.env,
       shell: false,
       stdio: 'inherit',
     });
-    const handledSignals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
-    const handlers = new Map();
+    const handledSignals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+    const handlers = new Map<NodeJS.Signals, () => void>();
 
     for (const signal of handledSignals) {
       // Foreground Ctrl-C already reaches both processes. Wait for the child
       // instead of delivering a second SIGINT; other signals need forwarding.
-      const handler = signal === 'SIGINT' ? () => {} : () => child.kill(signal);
+      const handler: () => void = signal === 'SIGINT'
+        ? () => {}
+        : () => { child.kill(signal); };
       handlers.set(signal, handler);
       process.on(signal, handler);
     }
 
-    function cleanup() {
+    function cleanup(): void {
       for (const [signal, handler] of handlers) {
         process.off(signal, handler);
       }
@@ -62,7 +64,8 @@ function runPi(realPi, args) {
       if (code !== null) {
         resolveExit(code);
       } else {
-        resolveExit(128 + (osConstants.signals[signal] ?? 0));
+        const signalNumber = signal ? osConstants.signals[signal] : 0;
+        resolveExit(128 + signalNumber);
       }
     });
   });
@@ -72,7 +75,8 @@ try {
   const args = expandPresetArgs(process.argv.slice(2), repoRoot);
   const realPi = findRealPi(process.env.PATH);
   process.exitCode = await runPi(realPi, args);
-} catch (error) {
-  console.error(`pi-presets: ${error.message}`);
+} catch (error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`pi-presets: ${message}`);
   process.exitCode = error instanceof PresetUsageError ? 2 : 1;
 }

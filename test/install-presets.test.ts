@@ -1,5 +1,6 @@
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
+import type { SpawnOptions } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,18 +12,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { installPresetDependencies } from '../src/install-presets.js';
-import { listPresets } from '../src/presets.js';
+import {
+  installPresetDependencies,
+  type ProcessRunner,
+} from '../src/install-presets.ts';
+import { listPresets } from '../src/presets.ts';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
-function makeTree(t) {
+function makeTree(t: TestContext): string {
   const root = mkdtempSync(join(tmpdir(), 'pi-presets-install-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   return root;
 }
 
-function addPreset(root, name, manifest, { lock = false } = {}) {
+function addPreset(
+  root: string,
+  name: string,
+  manifest: Record<string, unknown>,
+  { lock = false }: { lock?: boolean } = {},
+): string {
   const directory = join(root, name);
   mkdirSync(directory, { recursive: true });
   writeFileSync(join(directory, 'package.json'), JSON.stringify(manifest));
@@ -38,8 +47,12 @@ test('installs each dependency group locally with the lockfile-aware npm command
   addPreset(root, 'empty', { dependencies: {}, devDependencies: {} });
   addPreset(root, 'node_modules', { dependencies: { ignored: '1.0.0' } });
   mkdirSync(join(root, 'not-a-package'));
-  const calls = [];
-  const runner = async (command, args, options) => {
+  const calls: Array<{
+    command: string;
+    args: string[];
+    options: SpawnOptions;
+  }> = [];
+  const runner: ProcessRunner = async (command, args, options) => {
     calls.push({ command, args, options });
   };
 
