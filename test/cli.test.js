@@ -142,6 +142,47 @@ setInterval(() => {}, 1000);
   assert.equal(readFileSync(harness.capture, 'utf8'), 'received SIGTERM');
 });
 
+test('does not forward a second SIGINT after foreground process-group delivery', { timeout: 5000 }, async (t) => {
+  const interruptiblePi = String.raw`
+const fs = require('node:fs');
+let interrupts = 0;
+fs.writeFileSync(process.env.FAKE_PI_READY, 'ready');
+process.on('SIGINT', () => {
+  interrupts += 1;
+  fs.writeFileSync(process.env.FAKE_PI_CAPTURE, String(interrupts));
+  setTimeout(() => process.exit(interrupts === 1 ? 42 : 43), 100);
+});
+setInterval(() => {}, 1000);
+`;
+  const harness = makeHarness(t, interruptiblePi);
+  const ready = join(harness.cwd, 'ready');
+  const child = spawn(process.execPath, [cliPath, '-ps', 'coding'], {
+    cwd: harness.cwd,
+    detached: true,
+    env: { ...harness.env, FAKE_PI_READY: ready },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  child.stdout.resume();
+  child.stderr.resume();
+  t.after(() => {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already exited */ }
+  });
+
+  let attempts = 0;
+  while (!existsSync(ready) && attempts < 100) {
+    await delay(20);
+    attempts += 1;
+  }
+  assert.ok(existsSync(ready), 'fake Pi did not become ready');
+
+  const exited = once(child, 'exit');
+  process.kill(-child.pid, 'SIGINT');
+  const [code, signal] = await exited;
+  assert.equal(code, 42);
+  assert.equal(signal, null);
+  assert.equal(readFileSync(harness.capture, 'utf8'), '1');
+});
+
 test('fails clearly when PATH has no executable Pi', (t) => {
   const harness = makeHarness(t);
   rmSync(join(harness.bin, 'pi'));

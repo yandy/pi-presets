@@ -36,11 +36,13 @@ function runPi(realPi, args) {
       shell: false,
       stdio: 'inherit',
     });
-    const forwardedSignals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+    const handledSignals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
     const handlers = new Map();
 
-    for (const signal of forwardedSignals) {
-      const handler = () => child.kill(signal);
+    for (const signal of handledSignals) {
+      // Foreground Ctrl-C already reaches both processes. Wait for the child
+      // instead of delivering a second SIGINT; other signals need forwarding.
+      const handler = signal === 'SIGINT' ? () => {} : () => child.kill(signal);
       handlers.set(signal, handler);
       process.on(signal, handler);
     }
