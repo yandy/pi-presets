@@ -25,6 +25,7 @@ import {
 const setupPath = fileURLToPath(new URL('../src/setup.ts', import.meta.url));
 const sourceDirectory = fileURLToPath(new URL('../src/', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
+const teardownPath = fileURLToPath(new URL('../src/teardown.ts', import.meta.url));
 
 interface TestDirectories {
   directory: string;
@@ -398,4 +399,72 @@ test('setup --dry-run output evaluates into a working function', {
     argv: ['-e', join(repoRootWithQuotes, 'coding'), '-p', 'hello'],
     cwd,
   });
+});
+
+function runTeardown(directories: TestDirectories, args: readonly string[]) {
+  return spawnSync(process.execPath, [teardownPath, ...args], {
+    env: { ...process.env, HOME: directories.homeDir, XDG_CONFIG_HOME: directories.configHome, SHELL: '/bin/fish' },
+    encoding: 'utf8',
+  });
+}
+
+test('teardown removes every registration by default', (t) => {
+  const directories = makeDirectories(t);
+  const rcPaths = ['bash', 'zsh'].map((shell) => join(directories.homeDir, `.${shell}rc`));
+  for (const shell of ['fish', 'bash', 'zsh'] as const) {
+    installShellIntegration({ shell, repoRoot: directories.directory, ...directories });
+  }
+
+  const result = runTeardown(directories, []);
+
+  assert.equal(result.status, 0, result.stderr);
+  for (const rcPath of rcPaths) assert.equal(readFileSync(rcPath, 'utf8'), '');
+  assert.ok(!existsSync(join(directories.configHome, 'fish', 'conf.d', 'pi-presets.fish')));
+  assert.ok(!existsSync(join(directories.configHome, 'pi-presets', 'pi.sh')));
+  assert.ok(!existsSync(join(directories.configHome, 'pi-presets')));
+});
+
+test('teardown is a no-op when nothing is installed', (t) => {
+  const directories = makeDirectories(t);
+  const result = runTeardown(directories, []);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /nothing to remove/i);
+});
+
+test('teardown --shell bash keeps the shared function file for zsh', (t) => {
+  const directories = makeDirectories(t);
+  for (const shell of ['bash', 'zsh'] as const) {
+    installShellIntegration({ shell, repoRoot: directories.directory, ...directories });
+  }
+
+  const result = runTeardown(directories, ['--shell', 'bash']);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(existsSync(join(directories.configHome, 'pi-presets', 'pi.sh')));
+  assert.match(result.stdout, /pi\.sh/);
+  assert.match(readFileSync(join(directories.homeDir, '.zshrc'), 'utf8'), /# >>> pi-presets >>>/);
+});
+
+test('teardown --dry-run changes nothing', (t) => {
+  const directories = makeDirectories(t);
+  installShellIntegration({ shell: 'bash', repoRoot: directories.directory, ...directories });
+  const installed = readFileSync(join(directories.homeDir, '.bashrc'), 'utf8');
+
+  const result = runTeardown(directories, ['--shell', 'bash', '--dry-run']);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /dry run/i);
+  assert.equal(readFileSync(join(directories.homeDir, '.bashrc'), 'utf8'), installed);
+  assert.ok(existsSync(join(directories.configHome, 'pi-presets', 'pi.sh')));
+});
+
+test('teardown rejects unknown options and unsupported shells', (t) => {
+  const directories = makeDirectories(t);
+
+  assert.equal(runTeardown(directories, ['--force']).status, 2);
+  assert.equal(runTeardown(directories, ['--shell']).status, 2);
+  const unsupported = runTeardown(directories, ['--shell', 'nu']);
+  assert.equal(unsupported.status, 2);
+  assert.match(unsupported.stderr, /unsupported shell/i);
 });
