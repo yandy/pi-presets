@@ -336,3 +336,66 @@ test('dry run reports the plan without touching any file', (t) => {
   assert.equal(readFileSync(rcPath, 'utf8'), installed);
   assert.ok(existsSync(join(directories.configHome, 'pi-presets', 'pi.sh')));
 });
+
+test('setup --dry-run prints the function source and writes nothing', (t) => {
+  const directories = makeDirectories(t);
+  const result = spawnSync(process.execPath, [setupPath, '--dry-run', '--shell', 'bash'], {
+    env: { ...process.env, HOME: directories.homeDir, XDG_CONFIG_HOME: directories.configHome, SHELL: '/bin/fish' },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, renderFunctionSource('bash', repoRoot));
+  assert.ok(!existsSync(join(directories.homeDir, '.bashrc')));
+  assert.ok(!existsSync(join(directories.configHome, 'pi-presets')));
+  assert.match(result.stderr, /dry run/i);
+});
+
+const bashLookup = spawnSync('sh', ['-c', 'command -v "$1"', 'shell-lookup', 'bash'], { encoding: 'utf8' });
+const bashPath = bashLookup.stdout.trim();
+
+test('setup --dry-run output evaluates into a working function', {
+  skip: bashLookup.status !== 0,
+  timeout: 5000,
+}, (t) => {
+  const directories = makeDirectories(t);
+  const repoRootWithQuotes = join(directories.directory, "repo with ' quote and $dollar");
+  const bin = join(directories.directory, 'bin');
+  const cwd = join(directories.directory, 'work');
+  const capture = join(directories.directory, 'capture.json');
+  mkdirSync(bin);
+  mkdirSync(cwd);
+  mkdirSync(join(repoRootWithQuotes, 'coding'), { recursive: true });
+  cpSync(sourceDirectory, join(repoRootWithQuotes, 'src'), { recursive: true });
+  writeFileSync(join(repoRootWithQuotes, 'coding', 'package.json'), '{"name":"coding"}');
+  const fakePi = join(bin, 'pi');
+  writeFileSync(fakePi, `#!${process.execPath}\n`
+    + "const fs = require('node:fs');\n"
+    + 'fs.writeFileSync(process.env.FAKE_PI_CAPTURE, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() }));\n');
+  chmodSync(fakePi, 0o755);
+
+  const dryRun = spawnSync(
+    process.execPath,
+    [join(repoRootWithQuotes, 'src', 'setup.ts'), '--dry-run', '--shell', 'bash'],
+    { env: { ...process.env, HOME: directories.homeDir, XDG_CONFIG_HOME: directories.configHome }, encoding: 'utf8' },
+  );
+  assert.equal(dryRun.status, 0, dryRun.stderr);
+
+  const result = spawnSync(bashPath, ['-c', 'eval "$1"; pi -ps coding -p hello', 'pi-presets-test', dryRun.stdout], {
+    cwd,
+    env: {
+      ...process.env,
+      HOME: directories.homeDir,
+      PATH: `${bin}${delimiter}${dirname(process.execPath)}`,
+      FAKE_PI_CAPTURE: capture,
+    },
+    encoding: 'utf8',
+    timeout: 4000,
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(capture, 'utf8')), {
+    argv: ['-e', join(repoRootWithQuotes, 'coding'), '-p', 'hello'],
+    cwd,
+  });
+});
