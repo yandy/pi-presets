@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   installShellIntegration,
+  removeShellIntegration,
   renderFunctionSource,
   shellIntegrationPaths,
 } from '../src/shell-integration.ts';
@@ -228,4 +229,110 @@ test('shellIntegrationPaths lists exactly what install reports', (t) => {
       shellIntegrationPaths(shell, directories.homeDir, directories.configHome),
     );
   }
+});
+
+test('removing integration restores the rc file byte for byte', (t) => {
+  const directories = makeDirectories(t);
+  const rcPath = join(directories.homeDir, '.bashrc');
+  const original = 'before\nkeep this\nafter\n';
+  writeFileSync(rcPath, original);
+  const install = { shell: 'bash' as const, repoRoot: directories.directory, ...directories };
+  installShellIntegration(install);
+  installShellIntegration(install);
+
+  const result = removeShellIntegration({
+    shells: ['bash'], homeDir: directories.homeDir, configHome: directories.configHome,
+  });
+
+  assert.equal(readFileSync(rcPath, 'utf8'), original);
+  assert.deepEqual(result.rcFiles, [rcPath]);
+  assert.deepEqual(result.files, [join(directories.configHome, 'pi-presets', 'pi.sh')]);
+  assert.ok(!existsSync(join(directories.configHome, 'pi-presets', 'pi.sh')));
+});
+
+test('removing integration leaves no managed block for a missing or empty rc', (t) => {
+  const directories = makeDirectories(t);
+  for (const shell of ['bash', 'zsh'] as const) {
+    installShellIntegration({ shell, repoRoot: directories.directory, ...directories });
+    removeShellIntegration({
+      shells: [shell], homeDir: directories.homeDir, configHome: directories.configHome,
+    });
+    const rcPath = join(directories.homeDir, `.${shell}rc`);
+    assert.ok(existsSync(rcPath));
+    assert.equal(readFileSync(rcPath, 'utf8'), '');
+  }
+});
+
+test('removing integration preserves content that follows the managed block', (t) => {
+  const directories = makeDirectories(t);
+  const rcPath = join(directories.homeDir, '.bashrc');
+  writeFileSync(rcPath, 'before\n# >>> pi-presets >>>\nold\n# <<< pi-presets <<<\nkeep me\n');
+
+  removeShellIntegration({
+    shells: ['bash'], homeDir: directories.homeDir, configHome: directories.configHome,
+  });
+
+  assert.equal(readFileSync(rcPath, 'utf8'), 'before\nkeep me\n');
+});
+
+test('removing integration aborts on an incomplete managed block', (t) => {
+  const directories = makeDirectories(t);
+  const bashrc = join(directories.homeDir, '.bashrc');
+  const zshrc = join(directories.homeDir, '.zshrc');
+  const original = 'keep me\n# >>> pi-presets >>>\nold\n';
+  writeFileSync(bashrc, original);
+  writeFileSync(zshrc, 'zsh content\n');
+  installShellIntegration({ shell: 'zsh', repoRoot: directories.directory, ...directories });
+
+  assert.throws(() => removeShellIntegration({
+    shells: ['bash', 'zsh'], homeDir: directories.homeDir, configHome: directories.configHome,
+  }), /incomplete managed block/i);
+  assert.equal(readFileSync(bashrc, 'utf8'), original);
+  assert.match(readFileSync(zshrc, 'utf8'), /# >>> pi-presets >>>/);
+});
+
+test('keeps the shared posix function file while another rc still references it', (t) => {
+  const directories = makeDirectories(t);
+  for (const shell of ['bash', 'zsh'] as const) {
+    installShellIntegration({ shell, repoRoot: directories.directory, ...directories });
+  }
+  const functionPath = join(directories.configHome, 'pi-presets', 'pi.sh');
+
+  const result = removeShellIntegration({
+    shells: ['bash'], homeDir: directories.homeDir, configHome: directories.configHome,
+  });
+
+  assert.ok(existsSync(functionPath));
+  assert.deepEqual(result.keptFiles, [functionPath]);
+  assert.doesNotMatch(readFileSync(join(directories.homeDir, '.bashrc'), 'utf8'), /pi-presets/);
+  assert.match(readFileSync(join(directories.homeDir, '.zshrc'), 'utf8'), /# >>> pi-presets >>>/);
+});
+
+test('removing fish integration deletes only the conf.d file', (t) => {
+  const directories = makeDirectories(t);
+  installShellIntegration({ shell: 'fish', repoRoot: directories.directory, ...directories });
+  const integrationPath = join(directories.configHome, 'fish', 'conf.d', 'pi-presets.fish');
+
+  const result = removeShellIntegration({
+    shells: ['fish'], homeDir: directories.homeDir, configHome: directories.configHome,
+  });
+
+  assert.deepEqual(result.files, [integrationPath]);
+  assert.ok(!existsSync(integrationPath));
+  assert.ok(existsSync(join(directories.configHome, 'fish', 'conf.d')));
+});
+
+test('dry run reports the plan without touching any file', (t) => {
+  const directories = makeDirectories(t);
+  const rcPath = join(directories.homeDir, '.bashrc');
+  installShellIntegration({ shell: 'bash', repoRoot: directories.directory, ...directories });
+  const installed = readFileSync(rcPath, 'utf8');
+
+  const result = removeShellIntegration({
+    shells: ['bash'], homeDir: directories.homeDir, configHome: directories.configHome, dryRun: true,
+  });
+
+  assert.deepEqual(result.rcFiles, [rcPath]);
+  assert.equal(readFileSync(rcPath, 'utf8'), installed);
+  assert.ok(existsSync(join(directories.configHome, 'pi-presets', 'pi.sh')));
 });

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const SUPPORTED_SHELLS = ['fish', 'bash', 'zsh'] as const;
@@ -66,6 +66,101 @@ function updateRc(original: string, block: string): string {
     : original;
   const separation = withTrailingNewline.length > 0 ? '\n' : '';
   return `${withTrailingNewline}${separation}${block}\n`;
+}
+
+export interface RemovalOptions {
+  shells: readonly SupportedShell[];
+  homeDir: string;
+  configHome: string;
+  dryRun?: boolean;
+}
+
+export interface RemovalResult {
+  files: string[];
+  rcFiles: string[];
+  keptFiles: string[];
+}
+
+function hasManagedBlock(text: string): boolean {
+  return text.includes(START_MARKER) || text.includes(END_MARKER);
+}
+
+function stripManagedBlock(original: string, source: string): string {
+  const start = original.indexOf(START_MARKER);
+  const end = original.indexOf(END_MARKER);
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`Incomplete managed block in ${source}; leaving it unchanged.`);
+  }
+
+  // The install path separates an appended block with one blank line before it
+  // and one newline after it; taking both back keeps rc files byte-identical.
+  let prefix = original.slice(0, start);
+  let suffix = original.slice(end + END_MARKER.length);
+  if (prefix.endsWith('\n\n')) prefix = prefix.slice(0, -1);
+  if (suffix.startsWith('\n')) suffix = suffix.slice(1);
+  return prefix + suffix;
+}
+
+export function removeShellIntegration({
+  shells,
+  homeDir,
+  configHome,
+  dryRun = false,
+}: RemovalOptions): RemovalResult {
+  const rcFiles: string[] = [];
+  const keptFiles: string[] = [];
+  const deletions: string[] = [];
+  const writes: { path: string; content: string }[] = [];
+  const stripped = new Map<SupportedShell, string>();
+  const posixShells = shells.filter((shell) => shell !== 'fish');
+
+  // Validate and compute every rc change first, so an incomplete managed block
+  // anywhere aborts the whole removal before a single file is touched.
+  for (const shell of posixShells) {
+    const rcPath = shellIntegrationPaths(shell, homeDir, configHome)[1];
+    if (!existsSync(rcPath)) continue;
+    const original = readFileSync(rcPath, 'utf8');
+    if (!hasManagedBlock(original)) continue;
+    const content = stripManagedBlock(original, rcPath);
+    stripped.set(shell, content);
+    writes.push({ path: rcPath, content });
+    rcFiles.push(rcPath);
+  }
+
+  if (shells.includes('fish')) {
+    const [integrationPath] = shellIntegrationPaths('fish', homeDir, configHome);
+    if (existsSync(integrationPath)) deletions.push(integrationPath);
+  }
+
+  const functionPath = join(configHome, 'pi-presets', 'pi.sh');
+  const stillReferenced = (['bash', 'zsh'] as const).some((shell) => {
+    const rcPath = shellIntegrationPaths(shell, homeDir, configHome)[1];
+    if (!existsSync(rcPath)) return false;
+    const content = stripped.get(shell) ?? readFileSync(rcPath, 'utf8');
+    return hasManagedBlock(content);
+  });
+
+  if (posixShells.length > 0 && existsSync(functionPath)) {
+    if (stillReferenced) {
+      keptFiles.push(functionPath);
+    } else {
+      deletions.push(functionPath);
+    }
+  }
+
+  if (!dryRun) {
+    for (const write of writes) writeFileSync(write.path, write.content);
+    for (const path of deletions) rmSync(path, { force: true });
+    if (deletions.includes(functionPath)) {
+      try {
+        rmdirSync(join(configHome, 'pi-presets'));
+      } catch {
+        // Leave the directory alone when it still holds something else.
+      }
+    }
+  }
+
+  return { files: deletions, rcFiles, keptFiles };
 }
 
 export function installShellIntegration({
