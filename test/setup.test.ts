@@ -15,10 +15,15 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { installShellIntegration } from '../src/shell-integration.ts';
+import {
+  installShellIntegration,
+  renderFunctionSource,
+  shellIntegrationPaths,
+} from '../src/shell-integration.ts';
 
 const setupPath = fileURLToPath(new URL('../src/setup.ts', import.meta.url));
 const sourceDirectory = fileURLToPath(new URL('../src/', import.meta.url));
+const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
 interface TestDirectories {
   directory: string;
@@ -204,3 +209,23 @@ for (const shell of ['fish', 'bash', 'zsh'] as const) {
     });
   });
 }
+
+test('renderFunctionSource matches the installed function file', (t) => {
+  const directories = makeDirectories(t);
+  installShellIntegration({ shell: 'bash', repoRoot: '/repo with space', ...directories });
+  assert.equal(
+    readFileSync(join(directories.configHome, 'pi-presets', 'pi.sh'), 'utf8'),
+    renderFunctionSource('bash', '/repo with space'),
+  );
+});
+
+test('shellIntegrationPaths lists exactly what install reports', (t) => {
+  const directories = makeDirectories(t);
+  for (const shell of ['fish', 'bash', 'zsh'] as const) {
+    const options = { shell, repoRoot: directories.directory, ...directories };
+    assert.deepEqual(
+      installShellIntegration(options).files,
+      shellIntegrationPaths(shell, directories.homeDir, directories.configHome),
+    );
+  }
+});
