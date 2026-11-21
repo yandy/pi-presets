@@ -20,6 +20,40 @@ npm run setup -- --shell fish # 或 bash、zsh
 
 重复执行 `setup` 不会重复写入 shell 配置。
 
+### 只在当前 shell 生效（不落盘）
+
+```sh
+# bash / zsh
+eval "$(npm run --silent setup -- --dry-run)"
+
+# fish（需 fish 3.1+）
+eval (npm run --silent setup -- --dry-run | string collect)
+```
+
+执行后当前 shell 有 `pi`，关掉即消失，磁盘上不留东西。命令里的 `--silent` 和 fish 的 `| string collect` 都不能省。
+
+### 卸载
+
+```sh
+npm run teardown                    # 清理全部注册
+npm run teardown -- --shell bash    # 只清理 bash
+npm run teardown -- --dry-run       # 只打印将删除的内容
+```
+
+只动 `setup` 写下的标记块和函数文件。重复执行是空操作；标记块被手工改坏时整体中止，不改任何文件。
+
+### 移动仓库目录
+
+函数里记的是仓库的绝对路径，搬目录后重跑一次：
+
+```sh
+cd /new/path/to/pi-presets
+npm run setup
+exec "$SHELL"
+```
+
+`rc` 不用改。
+
 ## 使用方法
 
 ```sh
@@ -56,3 +90,5 @@ pi -e /path/to/somewhere/coding -e /path/to/somewhere/office
 npm run typecheck
 npm test
 ```
+
+行为契约与设计取舍见 `docs/superpowers/specs/`。
