@@ -20,6 +20,48 @@ npm run setup -- --shell fish # 或 bash、zsh
 
 重复执行 `setup` 不会重复写入 shell 配置。
 
+### 只作用于当前 shell（不落盘）
+
+`--dry-run` 不写任何文件，只把可 `eval` 的 shell 代码打到 stdout，人类可读说明全部走 stderr：
+
+```sh
+# bash / zsh
+eval "$(npm run --silent setup -- --dry-run)"
+
+# fish
+eval (npm run --silent setup -- --dry-run)
+```
+
+执行后当前 shell 立刻有 `pi`，关掉即消失，磁盘上不留任何东西。`--silent` 是必须的——否则 npm 自己的输出会被一并 `eval`。默认按 `$SHELL`（登录 shell）选择目标；在 bash 里嵌套 fish 之类的情况下用 `--shell` 指定：
+
+```sh
+eval "$(npm run --silent setup -- --dry-run --shell bash)"
+```
+
+直接执行 `npm run setup -- --dry-run`（stdout 是终端）时，代码照常打印在屏幕上，另附一行 `eval` 用法提示。
+
+### 卸载
+
+```sh
+npm run teardown                    # 清理 fish、bash、zsh 全部注册
+npm run teardown -- --shell bash    # 只清理 bash
+npm run teardown -- --dry-run       # 只打印将删除/将剥离的清单
+```
+
+卸载只动自己写下的东西：从 `.bashrc`/`.zshrc` 摘掉受管标记块，删除 `$XDG_CONFIG_HOME/pi-presets/pi.sh` 与 `fish/conf.d/pi-presets.fish`，标记块之外的配置一个字节都不改。重复执行是空操作（退出码 0）；标记块被手工改残（只剩开始或结束标记）时整体中止、不修改任何文件。`pi.sh` 由 bash 与 zsh 共用，所以 `--shell bash` 在 zsh 仍注册着时会保留它，并在输出中说明。
+
+### 移动仓库目录
+
+生成的 shell function 里烘焙了仓库的绝对路径（`<repo>/src/cli.ts`），所以搬动目录后旧 function 会立刻失效。在新位置重跑一次即可：
+
+```sh
+cd /new/path/to/pi-presets
+npm run setup
+exec "$SHELL"
+```
+
+函数文件会被就地改写成新路径，rc 文件不变（不需要手工编辑 rc）。反过来的注意点：如果你在旧克隆里又跑了一次 `setup`，注册会指回旧路径——同一时间只有最后一次 `setup` 生效。
+
 ## 使用方法
 
 ```sh
