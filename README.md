@@ -29,10 +29,15 @@ npm run setup -- --shell fish # 或 bash、zsh
 eval "$(npm run --silent setup -- --dry-run)"
 
 # fish
-eval (npm run --silent setup -- --dry-run)
+eval (npm run --silent setup -- --dry-run | string collect)
 ```
 
-执行后当前 shell 立刻有 `pi`，关掉即消失，磁盘上不留任何东西。`--silent` 是必须的——否则 npm 自己的输出会被一并 `eval`。默认按 `$SHELL`（登录 shell）选择目标；在 bash 里嵌套 fish 之类的情况下用 `--shell` 指定：
+执行后当前 shell 立刻有 `pi`，关掉即消失，磁盘上不留任何东西。两处细节都是必需的：
+
+- `--silent`：否则 npm 自己的横幅会进 stdout，被一并 `eval`。
+- fish 的 `(...)` 会把多行输出按空格拼成一行，而函数代码的第一行是注释，会把后面全部吃掉；`| string collect` 让整段代码保持为单个元素。`string collect` 需要 fish 3.1 或更新版本。
+
+默认按 `$SHELL`（登录 shell）选择目标；在 bash 里嵌套 fish 之类的情况下用 `--shell` 指定：
 
 ```sh
 eval "$(npm run --silent setup -- --dry-run --shell bash)"
@@ -48,7 +53,7 @@ npm run teardown -- --shell bash    # 只清理 bash
 npm run teardown -- --dry-run       # 只打印将删除/将剥离的清单
 ```
 
-卸载只动自己写下的东西：从 `.bashrc`/`.zshrc` 摘掉受管标记块，删除 `$XDG_CONFIG_HOME/pi-presets/pi.sh` 与 `fish/conf.d/pi-presets.fish`，标记块之外的配置一个字节都不改。重复执行是空操作（退出码 0）；标记块被手工改残（只剩开始或结束标记）时整体中止、不修改任何文件。`pi.sh` 由 bash 与 zsh 共用，所以 `--shell bash` 在 zsh 仍注册着时会保留它，并在输出中说明。
+卸载只动自己写下的东西：从 `.bashrc`/`.zshrc` 摘掉受管标记块，删除 `$XDG_CONFIG_HOME/pi-presets/pi.sh` 与 `fish/conf.d/pi-presets.fish`，标记块之外的配置一个字节都不改。重复执行是空操作（退出码 0）；标记块被手工改残（少了开始或结束标记，或出现重复标记）时整体中止、不修改任何文件。一个已知例外：rc 原本没有末尾换行时，安装会补上一个，卸载后保留这个换行——不推断原状态，也不为了恢复它去猜。`pi.sh` 由 bash 与 zsh 共用，所以 `--shell bash` 在 zsh 仍注册着时会保留它，并在输出中说明。
 
 ### 移动仓库目录
 

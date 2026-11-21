@@ -61,7 +61,7 @@ try {
     );
     if (process.stdout.isTTY) {
       const command = shell === 'fish'
-        ? 'eval (npm run --silent setup -- --dry-run --shell fish)'
+        ? 'eval (npm run --silent setup -- --dry-run --shell fish | string collect)'
         : `eval "$(npm run --silent setup -- --dry-run --shell ${shell})"`;
       console.error(`Apply it to the current ${shell} shell with: ${command}`);
     }

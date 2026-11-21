@@ -49,16 +49,46 @@ export function shellIntegrationPaths(
   return [join(configHome, 'pi-presets', 'pi.sh'), join(homeDir, `.${shell}rc`)];
 }
 
-function updateRc(original: string, block: string): string {
-  const start = original.indexOf(START_MARKER);
-  const end = original.indexOf(END_MARKER);
-  if (start !== -1 || end !== -1) {
-    if (start === -1 || end === -1 || end < start) {
-      throw new Error('Incomplete managed block in shell rc file; leaving it unchanged.');
-    }
-    return original.slice(0, start)
-      + block
-      + original.slice(end + END_MARKER.length);
+function countOccurrences(text: string, needle: string): number {
+  let count = 0;
+  let index = text.indexOf(needle);
+  while (index !== -1) {
+    count += 1;
+    index = text.indexOf(needle, index + needle.length);
+  }
+  return count;
+}
+
+interface ManagedBlockSpan {
+  start: number;
+  end: number;
+}
+
+// Refuse to guess: a block that is incomplete, repeated, or out of order could
+// hold user content between a stray start marker and the next end marker, so
+// both setup and teardown abort instead of rewriting it.
+function locateManagedBlock(text: string, source: string): ManagedBlockSpan | undefined {
+  const starts = countOccurrences(text, START_MARKER);
+  const ends = countOccurrences(text, END_MARKER);
+  if (starts === 0 && ends === 0) return undefined;
+  if (starts !== 1 || ends !== 1) {
+    throw new Error(
+      `Incomplete managed block in ${source} (${starts} start marker(s), ${ends} end marker(s)); leaving it unchanged.`,
+    );
+  }
+
+  const start = text.indexOf(START_MARKER);
+  const end = text.indexOf(END_MARKER);
+  if (end < start) {
+    throw new Error(`Incomplete managed block in ${source}; leaving it unchanged.`);
+  }
+  return { start, end: end + END_MARKER.length };
+}
+
+function updateRc(original: string, block: string, source: string): string {
+  const span = locateManagedBlock(original, source);
+  if (span) {
+    return original.slice(0, span.start) + block + original.slice(span.end);
   }
 
   const withTrailingNewline = original.length > 0 && !original.endsWith('\n')
@@ -86,16 +116,13 @@ function hasManagedBlock(text: string): boolean {
 }
 
 function stripManagedBlock(original: string, source: string): string {
-  const start = original.indexOf(START_MARKER);
-  const end = original.indexOf(END_MARKER);
-  if (start === -1 || end === -1 || end < start) {
-    throw new Error(`Incomplete managed block in ${source}; leaving it unchanged.`);
-  }
+  const span = locateManagedBlock(original, source);
+  if (!span) return original;
 
   // The install path separates an appended block with one blank line before it
-  // and one newline after it; taking both back keeps rc files byte-identical.
-  let prefix = original.slice(0, start);
-  let suffix = original.slice(end + END_MARKER.length);
+  // and one newline after it; taking both back restores the original rc bytes.
+  let prefix = original.slice(0, span.start);
+  let suffix = original.slice(span.end);
   if (prefix.endsWith('\n\n')) prefix = prefix.slice(0, -1);
   if (suffix.startsWith('\n')) suffix = suffix.slice(1);
   return prefix + suffix;
@@ -185,7 +212,7 @@ export function installShellIntegration({
   const quotedPath = quotePosix(functionPath);
   const block = `${START_MARKER}\n[ -f ${quotedPath} ] && . ${quotedPath}\n${END_MARKER}`;
   const original = existsSync(rcPath) ? readFileSync(rcPath, 'utf8') : '';
-  const updated = updateRc(original, block);
+  const updated = updateRc(original, block, rcPath);
 
   mkdirSync(join(configHome, 'pi-presets'), { recursive: true });
   writeFileSync(functionPath, source);

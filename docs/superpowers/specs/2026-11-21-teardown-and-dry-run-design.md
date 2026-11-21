@@ -53,8 +53,9 @@
 
 ### 卸载语义
 
-- 标记块剥离：读取 rc，定位 `# >>> pi-presets >>>` 与 `# <<< pi-presets <<<` 之间的片段并移除；同时吞掉紧邻块一侧多余的一个换行（安装时追加会在块前加一个空行、块后加一个换行）。块外字节不得改变：`install` 后 `remove` 必须让 rc 逐字节回到安装前内容。
-- 标记只出现一半或顺序错乱：与 `install` 一致地报 `incomplete managed block`，退出码 1。此时先校验全部 rc，任何一个不完整就整体不修改。
+- 标记块剥离：读取 rc，定位 `# >>> pi-presets >>>` 与 `# <<< pi-presets <<<` 之间的片段并移除；同时吞掉紧邻块一侧多余的一个换行（安装时追加会在块前加一个空行、块后加一个换行）。标记块外的字节不得改变：对于原本以换行结尾的 rc，`install` 后 `remove` 逐字节回到安装前内容。
+- 末尾换行规范化（已知且已接受的例外）：rc 原本**没有**末尾换行时，安装补一个换行，卸载后保留它。`install` 对 `foo` 与 `foo\n` 产生相同结果，因此无法反推原状，本设计选择不猜。
+- 标记只出现一半、顺序错乱或出现重复标记：与 `install` 一致地报 `Incomplete managed block`，退出码 1。此时先校验全部 rc，任何一个不合法就整体不修改。重复标记必须中止而不是取第一对：畸形 rc 中两个开始标记之间的内容可能就是用户配置，猜错等于删配置。
 - 剥离后 rc 内容为空字符串时保留该空文件，不删除。空的 rc 与不存在的 rc 在 shell 语义上等价，但删除用户的 dotfile 比留一个空文件更糟。
 - `pi.sh` 删除条件：处理后**没有任何** rc 文件仍含受管标记块。因此 `teardown --shell bash` 在 zsh 还注册着时会保留 `pi.sh`，并在输出中说明；`pi-presets` 目录为空时 `rmdir`。
 - fish：删除 `conf.d/pi-presets.fish`，不动 `conf.d` 目录本身。
@@ -64,6 +65,7 @@
 - 不写任何文件，也不创建 `$XDG_CONFIG_HOME/pi-presets` 目录。
 - stdout 恰好是函数文件内容，无其他字节；stderr 输出「dry run：不会写盘」与「将写入：<路径列表>」。
 - stdout 是 TTY 时（人肉直接执行）额外向 stderr 打印 eval 用法；stdout 仍是代码，保证既能阅读也能 eval。
+- fish 的用法必须带 `| string collect`：fish 的 `(...)` 把多行输出按空格拼成一行，而函数代码第一行是注释，会把后面整段吃掉。bash/zsh 用 `eval "$(...)"`。
 
 ### 入口与脚本
 
@@ -76,7 +78,7 @@
 - 单元测试：`renderFunctionSource` 与安装产物逐字节相等；`shellIntegrationPaths` 与 `installShellIntegration().files` 相同。
 - 往返不变量：`install → remove` 后 rc 逐字节等于安装前；`install → install → remove` 同样；`remove → install` 与单次 `install` 逐字节相同。
 - 边界：不存在/空 rc；块后有用户内容；标记不完整（整体中止）；`teardown --shell bash` 时 zsh 仍注册（`pi.sh` 保留）；fish 与 posix 并存。
-- dry-run：退出码 0，stdout 精确等于函数文件内容，`$HOME` 与 `$XDG_CONFIG_HOME` 下不新增任何文件；在真实 bash/zsh/fish 中 `eval` 该输出后用假 `pi` 验证 argv 与安装版一致。
+- dry-run：退出码 0，stdout 精确等于函数文件内容，`$HOME` 与 `$XDG_CONFIG_HOME` 下不新增任何文件；在真实 bash 与 fish 中 `eval` 该输出后用假 `pi` 验证 argv 与安装版一致（fish 必须用 `string collect` 形式）。
 - 幂等：重复 teardown 第二次为空操作，退出码 0。
 
 ## 留给实现者的细节

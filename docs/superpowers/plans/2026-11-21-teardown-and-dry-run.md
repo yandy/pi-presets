@@ -484,7 +484,7 @@ git commit -m "feat: add teardown command to undo shell integration"
 
 在「Setup」小节后补三部分：
 
-1. `--dry-run`：说明它不写盘，stdout 只有可 eval 的代码；给出 bash/zsh 的 `eval "$(npm run --silent setup -- --dry-run)"` 与 fish 的 `eval (npm run --silent setup -- --dry-run)`；点明必须 `--silent`，以及 `$SHELL` 猜错时用 `--shell`。
+1. `--dry-run`：说明它不写盘，stdout 只有可 eval 的代码；给出 bash/zsh 的 `eval "$(npm run --silent setup -- --dry-run)"` 与 fish 的 `eval (npm run --silent setup -- --dry-run | string collect)`（fish 的 `(...)` 用空格拼接多行，缺 `string collect` 时首行注释会吃掉整段代码）；点明必须 `--silent`，以及 `$SHELL` 猜错时用 `--shell`。
 2. 卸载：`npm run teardown`、`npm run teardown -- --shell bash`、`npm run teardown -- --dry-run`；说明幂等、只删自己的标记与生成文件、zsh 仍注册时保留共享函数文件。
 3. 目录搬家：说明函数里烘焙了仓库绝对路径，移动后需在新位置重跑 `npm run setup`，旧函数文件会被就地改写，rc 不变（不必编辑 rc）。
 

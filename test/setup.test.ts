@@ -468,3 +468,128 @@ test('teardown rejects unknown options and unsupported shells', (t) => {
   assert.equal(unsupported.status, 2);
   assert.match(unsupported.stderr, /unsupported shell/i);
 });
+
+const fishLookup = spawnSync('sh', ['-c', 'command -v "$1"', 'shell-lookup', 'fish'], { encoding: 'utf8' });
+const fishPath = fishLookup.stdout.trim();
+
+test('removing integration aborts on duplicate or stray managed markers', (t) => {
+  const directories = makeDirectories(t);
+  const rcPath = join(directories.homeDir, '.bashrc');
+  const fixtures = [
+    'before\n# >>> pi-presets >>>\nold\n# >>> pi-presets >>>\nuser line\n# <<< pi-presets <<<\nafter\n',
+    'before\n# >>> pi-presets >>>\nold\n# <<< pi-presets <<<\nafter\n# >>> pi-presets >>>\n',
+  ];
+  installShellIntegration({ shell: 'zsh', repoRoot: directories.directory, ...directories });
+  const functionPath = join(directories.configHome, 'pi-presets', 'pi.sh');
+  const installedFunction = readFileSync(functionPath, 'utf8');
+
+  for (const original of fixtures) {
+    writeFileSync(rcPath, original);
+    assert.throws(() => removeShellIntegration({
+      shells: ['bash'], homeDir: directories.homeDir, configHome: directories.configHome,
+    }), /managed block/i);
+    assert.equal(readFileSync(rcPath, 'utf8'), original);
+    assert.equal(readFileSync(functionPath, 'utf8'), installedFunction);
+  }
+});
+
+test('teardown exits 1 without writing when the managed block is malformed', (t) => {
+  const directories = makeDirectories(t);
+  const rcPath = join(directories.homeDir, '.bashrc');
+  const original = 'before\n# >>> pi-presets >>>\nold\n# >>> pi-presets >>>\nuser line\n# <<< pi-presets <<<\nafter\n';
+  installShellIntegration({ shell: 'bash', repoRoot: directories.directory, ...directories });
+  writeFileSync(rcPath, original);
+
+  const result = runTeardown(directories, ['--shell', 'bash']);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /managed block/i);
+  assert.equal(readFileSync(rcPath, 'utf8'), original);
+  assert.ok(existsSync(join(directories.configHome, 'pi-presets', 'pi.sh')));
+});
+
+test('removing integration normalizes a missing final newline', (t) => {
+  const directories = makeDirectories(t);
+  const rcPath = join(directories.homeDir, '.bashrc');
+  writeFileSync(rcPath, 'no trailing newline');
+  const options = { shell: 'bash' as const, repoRoot: directories.directory, ...directories };
+
+  installShellIntegration(options);
+  removeShellIntegration({
+    shells: ['bash'], homeDir: directories.homeDir, configHome: directories.configHome,
+  });
+
+  assert.equal(readFileSync(rcPath, 'utf8'), 'no trailing newline\n');
+});
+
+test('reinstalling after removal reproduces the same rc bytes', (t) => {
+  const directories = makeDirectories(t);
+  const rcPath = join(directories.homeDir, '.bashrc');
+  writeFileSync(rcPath, 'keep\nme\n');
+  const options = { shell: 'bash' as const, repoRoot: directories.directory, ...directories };
+
+  installShellIntegration(options);
+  const installed = readFileSync(rcPath, 'utf8');
+  removeShellIntegration({
+    shells: ['bash'], homeDir: directories.homeDir, configHome: directories.configHome,
+  });
+  assert.equal(readFileSync(rcPath, 'utf8'), 'keep\nme\n');
+  installShellIntegration(options);
+
+  assert.equal(readFileSync(rcPath, 'utf8'), installed);
+});
+
+test('a second teardown removes nothing', (t) => {
+  const directories = makeDirectories(t);
+  installShellIntegration({ shell: 'bash', repoRoot: directories.directory, ...directories });
+
+  assert.equal(runTeardown(directories, []).status, 0);
+  const second = runTeardown(directories, []);
+
+  assert.equal(second.status, 0, second.stderr);
+  assert.match(second.stdout, /nothing to remove/i);
+});
+
+test('setup --dry-run output evaluates in fish with string collect', {
+  skip: fishLookup.status !== 0,
+  timeout: 5000,
+}, (t) => {
+  const directories = makeDirectories(t);
+  const repoRootWithQuotes = join(directories.directory, "repo with ' quote and $dollar");
+  const bin = join(directories.directory, 'bin');
+  const cwd = join(directories.directory, 'work');
+  const capture = join(directories.directory, 'fish-capture.json');
+  mkdirSync(bin);
+  mkdirSync(cwd);
+  mkdirSync(join(repoRootWithQuotes, 'coding'), { recursive: true });
+  cpSync(sourceDirectory, join(repoRootWithQuotes, 'src'), { recursive: true });
+  writeFileSync(join(repoRootWithQuotes, 'coding', 'package.json'), '{"name":"coding"}');
+  const fakePi = join(bin, 'pi');
+  writeFileSync(fakePi, `#!${process.execPath}\n`
+    + "const fs = require('node:fs');\n"
+    + 'fs.writeFileSync(process.env.FAKE_PI_CAPTURE, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() }));\n');
+  chmodSync(fakePi, 0o755);
+
+  const result = spawnSync(fishPath, [
+    '-c',
+    'eval (node $argv[1] --dry-run --shell fish | string collect); pi -ps coding -p hello',
+    join(repoRootWithQuotes, 'src', 'setup.ts'),
+  ], {
+    cwd,
+    env: {
+      ...process.env,
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      PATH: `${bin}${delimiter}${dirname(process.execPath)}`,
+      FAKE_PI_CAPTURE: capture,
+    },
+    encoding: 'utf8',
+    timeout: 4000,
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(capture, 'utf8')), {
+    argv: ['-e', join(repoRootWithQuotes, 'coding'), '-p', 'hello'],
+    cwd,
+  });
+});
