@@ -158,6 +158,3 @@ vite.config.ts.timestamp-*
 .nx/cache
 .nx/workspace-data
 .nx/migrate-runs
-
-# 本地 worktree（superpowers 隔离工作区）
-.worktrees/
