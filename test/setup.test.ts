@@ -745,6 +745,9 @@ test('setup fails when no PowerShell host is found', (t) => {
   const result = spawnSync(process.execPath, [setupPath], { env, encoding: 'utf8' });
 
   if (result.status !== 1) {
+    const parentSide = Object.fromEntries(
+      Object.entries(env).filter(([key]) => /program|systemroot|^path$/i.test(key)),
+    );
     // Diagnose which host the child still finds, from the same environment.
     const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `
       import { discoverPowerShellHosts } from ${JSON.stringify(powershellHostUrl)};
@@ -753,7 +756,11 @@ test('setup fails when no PowerShell host is found', (t) => {
       const relevant = Object.fromEntries(Object.entries(env).filter(([key]) => /program|systemroot|^path$/i.test(key)));
       console.log(JSON.stringify({ relevant, hosts: result.hosts }, null, 1));
     `], { env, encoding: 'utf8' });
-    assert.fail(`expected exit 1\n${result.stdout}${result.stderr}\n--- probe ---\n${probe.stdout}${probe.stderr}`);
+    assert.fail(
+      `expected exit 1\n${result.stdout}${result.stderr}`
+      + `\n--- parent env ---\n${JSON.stringify(parentSide, null, 1)}`
+      + `\n--- probe ---\n${probe.stdout}${probe.stderr}`,
+    );
   }
   assert.match(result.stderr, /pwsh\.exe/);
 });
