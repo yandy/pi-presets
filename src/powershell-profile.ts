@@ -44,7 +44,7 @@ export function readProfileFile(path: string): ProfileContents {
 
   if (isUtf16Bom(buffer)) {
     throw new ProfileEncodingError(
-      `${path}: looks like a UTF-16 encoded file; save it as UTF-8 and run setup again.`,
+      `${path}: this profile is a UTF-16 encoded file; save it as UTF-8 before running setup or teardown.`,
     );
   }
 
@@ -66,15 +66,21 @@ interface ProfilePlan {
   text: string;
 }
 
-function bomFor(contents: ProfileContents, keepBomWhenMissing: boolean): string {
-  if (contents.kind === 'utf8') return '';
+// Windows PowerShell 5.1 decodes a BOM-less profile as ANSI, which would mangle
+// a non-ASCII repo path inside the generated function.
+const NON_ASCII = /[^\x00-\x7F]/;
+
+function bomFor(contents: ProfileContents, addBomToBomlessProfile: boolean): string {
+  // New profiles always get a BOM: 5.1 needs it for anything non-ASCII.
+  if (contents.kind === 'missing') return '\uFEFF';
   if (contents.kind === 'utf8-bom') return '\uFEFF';
-  return keepBomWhenMissing ? '\uFEFF' : '';
+  return addBomToBomlessProfile ? '\uFEFF' : '';
 }
 
-function writePlan(plan: ProfilePlan, keepBomWhenMissing: boolean): void {
+function writePlan(plan: ProfilePlan, addBomToBomlessProfile: boolean): void {
   mkdirSync(dirname(plan.path), { recursive: true });
-  writeFileSync(plan.path, `${bomFor(plan.contents, keepBomWhenMissing)}${plan.text}`, 'utf8');
+  const bom = bomFor(plan.contents, addBomToBomlessProfile);
+  writeFileSync(plan.path, `${bom}${plan.text}`, 'utf8');
 }
 
 export interface InstallPowerShellProfilesOptions {
@@ -99,7 +105,10 @@ export function installPowerShellProfiles({
     return { path, contents, text: updateRc(original, block, path, '\r\n') };
   });
 
-  for (const plan of plans) writePlan(plan, true);
+  // A BOM-less profile only gets one when the function itself needs it, so
+  // ASCII-only installs keep their byte-for-byte teardown.
+  const addBomToBomlessProfile = NON_ASCII.test(renderPowerShellFunction(repoRoot));
+  for (const plan of plans) writePlan(plan, addBomToBomlessProfile);
   return plans.map((plan) => plan.path);
 }
 

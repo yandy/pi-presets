@@ -787,6 +787,91 @@ test('setup --dry-run --shell powershell prints only the function', (t) => {
   assert.match(result.stderr, /Would write/);
 });
 
+test('setup --dry-run --shell powershell fails when no host is found', (t) => {
+  const directories = makeDirectories(t);
+  const result = spawnSync(process.execPath, [setupPath, '--dry-run', '--shell', 'powershell'], {
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'win32',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
+      USERPROFILE: directories.homeDir,
+      ProgramFiles: join(directories.directory, 'none'),
+      SystemRoot: join(directories.directory, 'none'),
+      PATH: join(directories.directory, 'empty'),
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /No PowerShell host found/);
+  assert.match(result.stderr, /pwsh\.exe/);
+});
+
+test('setup --dry-run --shell powershell fails when a host query fails', (t) => {
+  const directories = makeDirectories(t);
+  const hosts = join(directories.directory, 'hosts');
+  mkdirSync(hosts, { recursive: true });
+  const good = join(hosts, 'powershell.exe');
+  writeFileSync(good, `#!/bin/sh\nprintf '%s\\n' '${join(directories.directory, 'ps51', 'profile.ps1')}'\n`);
+  chmodSync(good, 0o755);
+  const bad = join(hosts, 'pwsh.exe');
+  writeFileSync(bad, '#!/bin/sh\nexit 3\n');
+  chmodSync(bad, 0o755);
+
+  const result = spawnSync(process.execPath, [setupPath, '--dry-run', '--shell', 'powershell'], {
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'win32',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
+      USERPROFILE: directories.homeDir,
+      ProgramFiles: join(directories.directory, 'none'),
+      SystemRoot: join(directories.directory, 'none'),
+      PATH: hosts,
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /Could not query every PowerShell host/);
+});
+
+test('setup escapes single quotes in the reload hint', (t) => {
+  const directories = makeDirectories(t);
+  const hosts = join(directories.directory, 'hosts');
+  mkdirSync(hosts, { recursive: true });
+  const profile = join(directories.directory, "ps7's dir", 'Microsoft.PowerShell_profile.ps1');
+  const host = join(hosts, 'pwsh.exe');
+  writeFileSync(host, `#!/bin/sh\nprintf '%s\\n' "${profile}"\n`);
+  chmodSync(host, 0o755);
+
+  const result = spawnSync(process.execPath, [setupPath], {
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'win32',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
+      USERPROFILE: directories.homeDir,
+      ProgramFiles: join(directories.directory, 'none'),
+      SystemRoot: join(directories.directory, 'none'),
+      PATH: hosts,
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(
+    result.stdout.includes(`. '${join(directories.directory, "ps7''s dir", 'Microsoft.PowerShell_profile.ps1')}'`),
+    result.stdout,
+  );
+});
+
 test('teardown strips the profile a PowerShell host reports', (t) => {
   const directories = makeDirectories(t);
   const hosts = join(directories.directory, 'hosts');
@@ -806,6 +891,9 @@ test('teardown strips the profile a PowerShell host reports', (t) => {
       XDG_CONFIG_HOME: directories.configHome,
       SHELL: '/bin/bash',
       USERPROFILE: directories.homeDir,
+      // Pinned: an inherited OneDrive would point the candidate scan at the
+      // developer's real OneDrive\Documents\PowerShell profile.
+      OneDrive: join(directories.directory, 'OneDrive'),
       PATH: hosts,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
@@ -831,6 +919,13 @@ test('teardown still strips the computed candidates when a host is broken', (t) 
   const profile = join(directories.homeDir, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
   mkdirSync(dirname(profile), { recursive: true });
   writeFileSync(profile, '# >>> pi-presets >>>\nfunction pi { }\n# <<< pi-presets <<<\n');
+  // The OneDrive candidate is computed too, so it is covered here as well; the
+  // environment is pinned so it cannot resolve to the developer's real one.
+  const oneDriveProfile = join(
+    directories.directory, 'OneDrive', 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1',
+  );
+  mkdirSync(dirname(oneDriveProfile), { recursive: true });
+  writeFileSync(oneDriveProfile, '# >>> pi-presets >>>\nfunction pi { }\n# <<< pi-presets <<<\n');
 
   const result = spawnSync(process.execPath, [teardownPath], {
     env: {
@@ -840,6 +935,7 @@ test('teardown still strips the computed candidates when a host is broken', (t) 
       XDG_CONFIG_HOME: directories.configHome,
       SHELL: '/bin/bash',
       USERPROFILE: directories.homeDir,
+      OneDrive: join(directories.directory, 'OneDrive'),
       PATH: hosts,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
@@ -849,6 +945,7 @@ test('teardown still strips the computed candidates when a host is broken', (t) 
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(readFileSync(profile, 'utf8'), '');
+  assert.equal(readFileSync(oneDriveProfile, 'utf8'), '');
   assert.match(result.stdout, /Stripped the managed block from/);
   assert.match(result.stderr, /pwsh\.exe: exited with exit code 3/);
   assert.match(result.stderr, /looking at the default profile paths instead/);

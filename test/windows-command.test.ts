@@ -97,6 +97,24 @@ test('builds a /s command line that survives spaces', (t) => {
   );
 });
 
+test('refuses to forward a double quote through cmd', (t) => {
+  const directory = makeDir(t);
+  const command = { path: join(directory, 'pi.cmd'), kind: 'cmd' as const };
+  const expected = {
+    message: 'argument contains a double quote, which cannot be forwarded through the Windows pi.cmd shim',
+  };
+
+  assert.throws(() => buildCmdCommandLine(command, ['-p', 'say "hi"']), expected);
+  assert.throws(() => spawnSpec(command, ['-p', 'say "hi"']), expected);
+
+  const exe = { path: join(directory, 'pi.exe'), kind: 'direct' as const };
+  assert.deepEqual(spawnSpec(exe, ['-p', 'say "hi"']), {
+    file: exe.path,
+    args: ['-p', 'say "hi"'],
+    windowsVerbatimArguments: false,
+  });
+});
+
 test('spawns .cmd through the command processor and .exe directly', (t) => {
   const directory = makeDir(t);
   const exe = join(directory, 'pi.exe');

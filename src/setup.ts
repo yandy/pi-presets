@@ -112,30 +112,9 @@ function discoverHosts(platform: NodeJS.Platform): PowerShellHosts {
   });
 }
 
-function powerShellDryRun(repoRoot: string, platform: NodeJS.Platform): void {
-  process.stdout.write(renderFunctionSource('powershell', repoRoot));
-  console.error('Dry run: no files written for powershell.');
-
-  const { hosts, failures } = discoverHosts(platform);
-  for (const failure of failures) {
-    console.error(`Could not query ${failure.message}`);
-  }
-  if (hosts.length > 0) {
-    console.error(`Would write: ${hosts.map((host) => host.profilePath).join(', ')}`);
-  } else if (failures.length > 0) {
-    console.error('Would write: nothing; every host that was found could not report its profile.');
-  } else {
-    console.error(
-      `Would write: nothing. No PowerShell host found. ${POWERSHELL_SEARCH_LOCATIONS} `
-      + POWERSHELL_INSTALL_HINT,
-    );
-  }
-  if (process.stdout.isTTY) {
-    console.error(`Apply it to the current powershell session with: ${POWERSHELL_DRY_RUN_COMMAND}`);
-  }
-}
-
-function installPowerShell(repoRoot: string, platform: NodeJS.Platform): void {
+// Shared by install and --dry-run: a missing host, or one that cannot report
+// its profile, aborts before anything is written to disk or to stdout.
+function validatedHosts(platform: NodeJS.Platform): PowerShellHost[] {
   const { hosts, failures } = discoverHosts(platform);
   // One unreadable host means we do not know its profile path, and writing the
   // rest would leave that host silently unwired: abort before any write.
@@ -146,6 +125,24 @@ function installPowerShell(repoRoot: string, platform: NodeJS.Platform): void {
   if (hosts.length === 0) {
     throw new Error(NO_POWERSHELL_HOST_MESSAGE);
   }
+  return hosts;
+}
+
+function powerShellDryRun(repoRoot: string, platform: NodeJS.Platform): void {
+  // Validate first: --dry-run output is eval'd, so it must fail exactly like a
+  // real install instead of printing a function and exiting 0.
+  const hosts = validatedHosts(platform);
+
+  process.stdout.write(renderFunctionSource('powershell', repoRoot));
+  console.error('Dry run: no files written for powershell.');
+  console.error(`Would write: ${hosts.map((host) => host.profilePath).join(', ')}`);
+  if (process.stdout.isTTY) {
+    console.error(`Apply it to the current powershell session with: ${POWERSHELL_DRY_RUN_COMMAND}`);
+  }
+}
+
+function installPowerShell(repoRoot: string, platform: NodeJS.Platform): void {
+  const hosts = validatedHosts(platform);
 
   const files = installPowerShellProfiles({
     profilePaths: hosts.map((host) => host.profilePath),
@@ -156,7 +153,9 @@ function installPowerShell(repoRoot: string, platform: NodeJS.Platform): void {
   for (const file of files) console.log(`  ${file}`);
   console.log('');
   for (const host of hosts) {
-    console.log(`Restart PowerShell, or run this in it: . '${host.profilePath}'`);
+    // PowerShell single-quoted strings escape ' by doubling it.
+    const quotedPath = host.profilePath.replaceAll("'", "''");
+    console.log(`Restart PowerShell, or run this in it: . '${quotedPath}'`);
   }
 
   console.log('');

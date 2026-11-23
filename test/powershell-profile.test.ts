@@ -65,6 +65,30 @@ test('creates the profile with a BOM and CRLF and quotes single quotes', (t) => 
   assert.ok(text.endsWith('# <<< pi-presets <<<\r\n'), text);
 });
 
+test('promotes a BOM on a BOM-less profile when the function has non-ASCII', (t) => {
+  const directory = makeDir(t);
+  const profile = join(directory, 'profile.ps1');
+  writeFileSync(profile, 'before\r\n');
+
+  installPowerShellProfiles({ profilePaths: [profile], repoRoot: "/repo's 中文/pi-presets" });
+
+  const bytes = readFileSync(profile);
+  assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  assert.ok(bytes.toString('utf8').includes("& node '/repo''s 中文/pi-presets/src/cli.ts' @args"));
+});
+
+test('leaves an ASCII BOM-less profile without a BOM', (t) => {
+  const directory = makeDir(t);
+  const profile = join(directory, 'profile.ps1');
+  writeFileSync(profile, 'before\r\n');
+
+  installPowerShellProfiles({ profilePaths: [profile], repoRoot: '/repo/pi-presets' });
+
+  const bytes = readFileSync(profile);
+  assert.notDeepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  assert.ok(bytes.toString('utf8').startsWith('before\r\n\r\n# >>> pi-presets >>>'));
+});
+
 test('install is idempotent and remove restores the original bytes', (t) => {
   const directory = makeDir(t);
   const profile = join(directory, 'profile.ps1');

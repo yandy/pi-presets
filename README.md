@@ -145,8 +145,10 @@ pi -e /path/to/somewhere/coding -e /path/to/somewhere/office
 ## 已知限制（Windows）
 
 - **`%VAR%` 和 `!` 会被 cmd 改写。** npm 装出来的 `pi` 是 `pi.cmd`，Node 只能经 `cmd.exe` 启动它，cmd 会展开参数里的 `%VAR%`，在启用延迟展开的场合还会吃掉 `!`。这两个字符没有既安全又不破坏内容的转义写法，只能原样传下去。
+- **参数含 `"` 时 `pi.cmd` 直接拒绝。** 还是因为 `pi` 是 `pi.cmd`：cmd.exe 不把 MSVCRT 的 `\"` 当转义，而是关掉我们加的那对引号，后面的 `&`、`|` 就成了真正的命令分隔符——这是命令注入的口子。没有 Windows 就没法验证一套安全的 cmd 引用写法，所以宁可报错退出（退出码 1），也不拼一条可能跑起别的命令的命令行。`pi.exe` 直启不受影响。
+- **卸载可能留下 3 字节 BOM。** 既有 profile 本来没有 BOM、而生成的函数含非 ASCII 字符（例如仓库路径带中文）时，`setup` 会先补一个 UTF-8 BOM，否则 5.1 按 ANSI 解码、函数里的路径会失效；`teardown` 只剥受管块，那个 BOM 会留在文件里。
 - **5.1 与 7 的传参规则不同。** Windows PowerShell 5.1 用 `Legacy` 规则，PowerShell 7.3+ 在 Windows 上默认 `Standard`（`$PSNativeCommandArgumentPassing`），含内嵌引号或以 `\` 结尾的参数在 5.1 上会走样。包装函数不设这个变量：它在 5.1 上不存在，设了也没用。
-- **UTF-16 的 profile 会被拒绝。** profile 若被另存为 UTF-16（5.1 的 `>` 和 `Out-File` 默认就是），`setup` 与 `teardown` 都不处理，报 `looks like a UTF-16 encoded file; save it as UTF-8 and run setup again.` 并以退出码 1 结束，一个文件都不改，请先另存为 UTF-8。新建的 profile 写 UTF-8 BOM，已有 BOM 原样保留；本来没有 BOM、实际是 ANSI 编码的 profile 按 UTF-8 处理，其中的非 ASCII 内容会被写坏。
+- **UTF-16 的 profile 会被拒绝。** profile 若被另存为 UTF-16（5.1 的 `>` 和 `Out-File` 默认就是），`setup` 与 `teardown` 都不处理，报 `this profile is a UTF-16 encoded file; save it as UTF-8 before running setup or teardown.` 并以退出码 1 结束，一个文件都不改，请先另存为 UTF-8。新建的 profile 写 UTF-8 BOM，已有 BOM 原样保留；本来没有 BOM、实际是 ANSI 编码的 profile 按 UTF-8 处理，其中的非 ASCII 内容会被写坏。
 - **`Set-Alias pi` 会遮蔽包装函数。** 别名优先级高于函数，自己设过 `Set-Alias pi …` 的话 `pi -ps coding` 不会走到包装函数，preset 也就不会展开；先 `Remove-Item Alias:pi`。
 - **自定义位置的 profile 扫不到。** 安装只写宿主自己报告的 `$PROFILE`（`Microsoft.PowerShell_profile.ps1`），不写 `profile.ps1`（AllHosts）；卸载多扫 `%USERPROFILE%\Documents\…` 与 `%OneDrive%\Documents\…` 下的默认位置，宿主不报告、你另设在别处的 profile 不在其中。
 - **真实冒烟需要一台 Windows。** 本机（Linux）跑不了：要在 PowerShell 7 与 Windows PowerShell 5.1 里各跑一遍 `pi -ps coding`、`pi -ps coding -p "list ts files"`，再跑 `npm run teardown` 确认 profile 逐字节还原。

@@ -114,9 +114,19 @@ export function quoteForCmd(argument: string): string {
   return argument;
 }
 
+export const CMD_DOUBLE_QUOTE_ERROR =
+  'argument contains a double quote, which cannot be forwarded through the Windows pi.cmd shim';
+
 // `cmd.exe /s /c` strips the outer quotes, so the whole command line is wrapped
 // in a second pair and the executable keeps its own.
 export function buildCmdCommandLine(command: RealPiCommand, args: readonly string[]): string {
+  // cmd.exe does not treat MSVCRT's `\"` as an escape: it closes the quote we
+  // added and re-exposes `& | < > ^ ( )` as real command separators. No quoting
+  // scheme can be verified safe without a Windows host, so refuse to build a
+  // command line that could run a different command.
+  for (const argument of args) {
+    if (argument.includes('"')) throw new Error(CMD_DOUBLE_QUOTE_ERROR);
+  }
   return `""${command.path}" ${args.map(quoteForCmd).join(' ')}"`;
 }
 
