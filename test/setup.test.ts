@@ -27,6 +27,7 @@ import { envWith, pathOverride } from './env.ts';
 const setupPath = fileURLToPath(new URL('../src/setup.ts', import.meta.url));
 const sourceDirectory = fileURLToPath(new URL('../src/', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
+const powershellHostPath = fileURLToPath(new URL('../src/powershell-host.ts', import.meta.url));
 const teardownPath = fileURLToPath(new URL('../src/teardown.ts', import.meta.url));
 
 // Several Windows cases stand in for pwsh.exe/powershell.exe with POSIX shell
@@ -728,24 +729,31 @@ test('setup rejects powershell off Windows and fish on Windows', (t) => {
 
 test('setup fails when no PowerShell host is found', (t) => {
   const directories = makeDirectories(t);
-  const result = spawnSync(process.execPath, [setupPath], {
-    // envWith drops case variants of the keys below: Windows environment blocks
-    // can carry `SYSTEMROOT`/`ProgramFiles` in another casing, and a duplicate
-    // entry would let discovery find the machine's real host.
-    env: envWith(process.env, {
-      PI_PRESETS_PLATFORM: 'win32',
-      HOME: directories.homeDir,
-      XDG_CONFIG_HOME: directories.configHome,
-      SHELL: '/bin/bash',
-      USERPROFILE: directories.homeDir,
-      ProgramFiles: join(directories.directory, 'none'),
-      SystemRoot: join(directories.directory, 'none'),
-      ...pathOverride(join(directories.directory, 'empty')),
-    }),
-    encoding: 'utf8',
+  // envWith drops case variants of the keys below: Windows environment blocks
+  // can carry `SYSTEMROOT`/`ProgramFiles` in another casing, and a duplicate
+  // entry would let discovery find the machine's real host.
+  const env = envWith(process.env, {
+    PI_PRESETS_PLATFORM: 'win32',
+    HOME: directories.homeDir,
+    XDG_CONFIG_HOME: directories.configHome,
+    SHELL: '/bin/bash',
+    USERPROFILE: directories.homeDir,
+    ProgramFiles: join(directories.directory, 'none'),
+    SystemRoot: join(directories.directory, 'none'),
+    ...pathOverride(join(directories.directory, 'empty')),
   });
+  const result = spawnSync(process.execPath, [setupPath], { env, encoding: 'utf8' });
 
-  assert.equal(result.status, 1, `${result.stdout}${result.stderr}`);
+  if (result.status !== 1) {
+    // Diagnose which host the child still finds, from the same environment.
+    const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import { discoverPowerShellHosts } from ${JSON.stringify(powershellHostPath)};
+      const env = process.env;
+      const result = discoverPowerShellHosts({ platform: 'win32', env, pathValue: env.PATH ?? '' });
+      console.log(JSON.stringify({ PATH: env.PATH, Path: env.Path, ProgramFiles: env.ProgramFiles, SystemRoot: env.SystemRoot, hosts: result.hosts }, null, 1));
+    `], { env, encoding: 'utf8' });
+    assert.fail(`expected exit 1\n${result.stdout}${result.stderr}\n--- probe ---\n${probe.stdout}${probe.stderr}`);
+  }
   assert.match(result.stderr, /pwsh\.exe/);
 });
 
