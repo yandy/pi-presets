@@ -522,7 +522,7 @@ test('setup writes both host profiles on Windows', (t) => {
       ...process.env,
       PI_PRESETS_PLATFORM: 'win32',
       USERPROFILE: directories.homeDir,
-      PATH: `${hosts}${delimiter}${process.env.PATH ?? ''}`,
+      PATH: `${hosts};${process.env.PATH ?? ''}`,
     },
     encoding: 'utf8',
   });
@@ -533,8 +533,7 @@ test('setup writes both host profiles on Windows', (t) => {
   assert.match(result.stdout, /function picode \{ pi -ps coding @args \}/);
 });
 
-test('setup rejects powershell off Windows and fish on Windows', (t) => {
-  const directories = makeDirectories(t);
+test('setup rejects powershell off Windows and fish on Windows', (t) => {  const directories = makeDirectories(t);
   const offWindows = spawnSync(process.execPath, [setupPath, '--shell', 'powershell'], {
     env: { ...process.env, PI_PRESETS_PLATFORM: 'linux', HOME: directories.homeDir, SHELL: '/bin/bash' },
     encoding: 'utf8',
