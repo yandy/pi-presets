@@ -658,7 +658,7 @@ Expected: FAIL（`currentPlatform` 不存在；`--shell powershell` 被当未知
 
 - 平台取自 `currentPlatform(process.env)`；候选 shell 为 `supportedShells(platform)`。
 - 缺省 shell：`win32` → `'powershell'`；其他平台仍取 `basename(process.env.SHELL ?? '')`（**不做宿主版本探测**，Windows 上唯一可选值就是 powershell）。
-- 报错文案随平台列出可选项（`supportedShells(platform).join(', ')`）。
+- 报错文案：**POSIX 分支逐字保留现有文案**（`--shell requires fish, bash, or zsh.`、`Choose fish, bash, or zsh.`）；只有 PowerShell/跨平台拒绝的新路径使用新文案（列出该平台可选项）。不要用统一的 `join(', ')` 重写 POSIX 文案。
 - `setup --shell powershell` 分支：
   1. `discoverPowerShellHosts({platform, env: process.env, pathValue: process.env.PATH ?? ''})`。
   2. `failures.length > 0` → 打印每个失败的宿主机与原因，退出码 1，不写文件。
