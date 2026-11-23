@@ -91,14 +91,16 @@ test('reports the preset whose dependency installation fails', async (t) => {
   );
 });
 
-test('office is an empty private package and both documented presets exist', () => {
-  const manifest = JSON.parse(readFileSync(join(repoRoot, 'office', 'package.json'), 'utf8'));
+test('placeholder presets are empty private packages and every preset is listed', () => {
+  for (const name of ['office', 'design'] as const) {
+    const manifest = JSON.parse(readFileSync(join(repoRoot, name, 'package.json'), 'utf8'));
 
-  assert.equal(manifest.name, '@yandy/pi-preset-office');
-  assert.equal(manifest.private, true);
-  assert.equal(manifest.dependencies, undefined);
-  assert.equal(manifest.devDependencies, undefined);
-  assert.equal(manifest.optionalDependencies, undefined);
-  assert.equal(manifest.pi, undefined);
-  assert.deepEqual(listPresets(repoRoot), ['coding', 'office']);
+    assert.equal(manifest.name, `@yandy/pi-preset-${name}`);
+    assert.equal(manifest.private, true);
+    assert.equal(manifest.dependencies, undefined);
+    assert.equal(manifest.devDependencies, undefined);
+    assert.equal(manifest.optionalDependencies, undefined);
+    assert.equal(manifest.pi, undefined);
+  }
+  assert.deepEqual(listPresets(repoRoot), ['coding', 'design', 'office']);
 });
