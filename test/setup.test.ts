@@ -22,6 +22,8 @@ import {
   shellIntegrationPaths,
 } from '../src/shell-integration.ts';
 
+import { pathOverride } from './env.ts';
+
 const setupPath = fileURLToPath(new URL('../src/setup.ts', import.meta.url));
 const sourceDirectory = fileURLToPath(new URL('../src/', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -212,7 +214,7 @@ for (const shell of ['fish', 'bash', 'zsh'] as const) {
   );
   const shellPath = (shellLookup.stdout ?? '').trim();
   test(`generated ${shell} function works from a path with shell metacharacters`, {
-    skip: shellLookup.status !== 0,
+    skip: process.platform === 'win32' || shellLookup.status !== 0,
     timeout: 5000,
   }, (t) => {
     const directories = makeDirectories(t);
@@ -256,7 +258,7 @@ for (const shell of ['fish', 'bash', 'zsh'] as const) {
         HOME: directories.homeDir,
         XDG_CONFIG_HOME: directories.configHome,
         SHELL: shellPath,
-        PATH: `${bin}${delimiter}${dirname(process.execPath)}`,
+        ...pathOverride(`${bin}${delimiter}${dirname(process.execPath)}`),
         FAKE_PI_CAPTURE: capture,
       },
       encoding: 'utf8',
@@ -400,7 +402,8 @@ test('dry run reports the plan without touching any file', (t) => {
 test('setup --dry-run prints the function source and writes nothing', (t) => {
   const directories = makeDirectories(t);
   const result = spawnSync(process.execPath, [setupPath, '--dry-run', '--shell', 'bash'], {
-    env: { ...process.env, HOME: directories.homeDir, XDG_CONFIG_HOME: directories.configHome, SHELL: '/bin/fish' },
+    env: { ...process.env,
+      PI_PRESETS_PLATFORM: 'linux', HOME: directories.homeDir, XDG_CONFIG_HOME: directories.configHome, SHELL: '/bin/fish' },
     encoding: 'utf8',
   });
 
@@ -439,7 +442,8 @@ test('setup --dry-run output evaluates into a working function', {
   const dryRun = spawnSync(
     process.execPath,
     [join(repoRootWithQuotes, 'src', 'setup.ts'), '--dry-run', '--shell', 'bash'],
-    { env: { ...process.env, HOME: directories.homeDir, XDG_CONFIG_HOME: directories.configHome }, encoding: 'utf8' },
+    { env: { ...process.env,
+      PI_PRESETS_PLATFORM: 'linux', HOME: directories.homeDir, XDG_CONFIG_HOME: directories.configHome }, encoding: 'utf8' },
   );
   assert.equal(dryRun.status, 0, dryRun.stderr);
 
@@ -449,7 +453,7 @@ test('setup --dry-run output evaluates into a working function', {
       ...process.env,
       PI_PRESETS_PLATFORM: 'linux',
       HOME: directories.homeDir,
-      PATH: `${bin}${delimiter}${dirname(process.execPath)}`,
+      ...pathOverride(`${bin}${delimiter}${dirname(process.execPath)}`),
       FAKE_PI_CAPTURE: capture,
     },
     encoding: 'utf8',
@@ -465,7 +469,8 @@ test('setup --dry-run output evaluates into a working function', {
 
 function runTeardown(directories: TestDirectories, args: readonly string[]) {
   return spawnSync(process.execPath, [teardownPath, ...args], {
-    env: { ...process.env, HOME: directories.homeDir, XDG_CONFIG_HOME: directories.configHome, SHELL: '/bin/fish' },
+    env: { ...process.env,
+      PI_PRESETS_PLATFORM: 'linux', HOME: directories.homeDir, XDG_CONFIG_HOME: directories.configHome, SHELL: '/bin/fish' },
     encoding: 'utf8',
   });
 }
@@ -642,9 +647,10 @@ test('setup --dry-run output evaluates in fish with string collect', {
     cwd,
     env: {
       ...process.env,
+      PI_PRESETS_PLATFORM: 'linux',
       HOME: directories.homeDir,
       XDG_CONFIG_HOME: directories.configHome,
-      PATH: `${bin}${delimiter}${dirname(process.execPath)}`,
+      ...pathOverride(`${bin}${delimiter}${dirname(process.execPath)}`),
       FAKE_PI_CAPTURE: capture,
     },
     encoding: 'utf8',
@@ -679,7 +685,7 @@ test('setup writes both host profiles on Windows', { skip: windowsFakeHostsSkip 
       XDG_CONFIG_HOME: directories.configHome,
       SHELL: '/bin/bash',
       USERPROFILE: directories.homeDir,
-      PATH: `${hosts};${process.env.PATH ?? ''}`,
+      ...pathOverride(`${hosts};${process.env.PATH ?? ''}`),
     },
     encoding: 'utf8',
   });
@@ -732,7 +738,7 @@ test('setup fails when no PowerShell host is found', (t) => {
       USERPROFILE: directories.homeDir,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
-      PATH: join(directories.directory, 'empty'),
+      ...pathOverride(join(directories.directory, 'empty')),
     },
     encoding: 'utf8',
   });
@@ -762,7 +768,7 @@ test('setup aborts the whole install when one host query fails', { skip: windows
       USERPROFILE: directories.homeDir,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
-      PATH: hosts,
+      ...pathOverride(hosts),
     },
     encoding: 'utf8',
   });
@@ -789,7 +795,7 @@ test('setup --dry-run --shell powershell prints only the function', { skip: wind
       USERPROFILE: directories.homeDir,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
-      PATH: hosts,
+      ...pathOverride(hosts),
     },
     encoding: 'utf8',
   });
@@ -812,7 +818,7 @@ test('setup --dry-run --shell powershell fails when no host is found', (t) => {
       USERPROFILE: directories.homeDir,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
-      PATH: join(directories.directory, 'empty'),
+      ...pathOverride(join(directories.directory, 'empty')),
     },
     encoding: 'utf8',
   });
@@ -844,7 +850,7 @@ test('setup --dry-run --shell powershell fails when a host query fails', { skip:
       USERPROFILE: directories.homeDir,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
-      PATH: hosts,
+      ...pathOverride(hosts),
     },
     encoding: 'utf8',
   });
@@ -854,7 +860,7 @@ test('setup --dry-run --shell powershell fails when a host query fails', { skip:
   assert.match(result.stderr, /Could not query every PowerShell host/);
 });
 
-test('setup escapes single quotes in the reload hint', (t) => {
+test('setup escapes single quotes in the reload hint', { skip: windowsFakeHostsSkip }, (t) => {
   const directories = makeDirectories(t);
   const hosts = join(directories.directory, 'hosts');
   mkdirSync(hosts, { recursive: true });
@@ -873,7 +879,7 @@ test('setup escapes single quotes in the reload hint', (t) => {
       USERPROFILE: directories.homeDir,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
-      PATH: hosts,
+      ...pathOverride(hosts),
     },
     encoding: 'utf8',
   });
@@ -907,7 +913,7 @@ test('teardown strips the profile a PowerShell host reports', { skip: windowsFak
       // Pinned: an inherited OneDrive would point the candidate scan at the
       // developer's real OneDrive\Documents\PowerShell profile.
       OneDrive: join(directories.directory, 'OneDrive'),
-      PATH: hosts,
+      ...pathOverride(hosts),
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
     },
@@ -949,7 +955,7 @@ test('teardown still strips the computed candidates when a host is broken', { sk
       SHELL: '/bin/bash',
       USERPROFILE: directories.homeDir,
       OneDrive: join(directories.directory, 'OneDrive'),
-      PATH: hosts,
+      ...pathOverride(hosts),
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
     },

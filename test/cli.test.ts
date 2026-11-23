@@ -16,6 +16,8 @@ import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import { pathOverride } from './env.ts';
+
 const cliPath = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
@@ -86,7 +88,7 @@ function makeHarness(t: TestContext, source: string = recordingPi): Harness {
     cwd,
     env: {
       ...process.env,
-      PATH: bin,
+      ...pathOverride(bin),
       FAKE_PI_CAPTURE: capture,
     },
   };
@@ -236,7 +238,7 @@ test('fails clearly when PATH has no candidate Pi command', (t) => {
   const result = runCli(harness, ['--version']);
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /could not find.*pi/i);
+  assert.match(result.stderr, /could not find.*pi|pi is not on PATH/i);
   assert.equal(existsSync(harness.capture), false);
 });
 
@@ -250,11 +252,11 @@ test('ignores a Pi file that is not executable', {
   rmSync(harness.executable);
 
   const result = runCli(harness, ['--version'], {
-    env: { PATH: `${nonExecutableBin}${delimiter}${harness.bin}` },
+    env: { ...pathOverride(`${nonExecutableBin}${delimiter}${harness.bin}`) },
   });
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /could not find.*pi/i);
+  assert.match(result.stderr, /could not find.*pi|pi is not on PATH/i);
   assert.equal(existsSync(harness.capture), false);
 });
 
