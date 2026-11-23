@@ -129,6 +129,49 @@ test('setup accepts an explicit shell override', (t) => {
   assert.match(result.stdout, /source .*\.bashrc/);
 });
 
+for (const [shell, shortcut, multiPresetShortcut] of [
+  ['fish', "abbr --add picode 'pi -ps coding'", "abbr --add piwork 'pi -ps office,design'"],
+  ['bash', "alias picode='pi -ps coding'", "alias piwork='pi -ps office,design'"],
+  ['zsh', "alias picode='pi -ps coding'", "alias piwork='pi -ps office,design'"],
+] as const) {
+  test(`setup prints the ${shell} shortcut hint after installing`, (t) => {
+    const directories = makeDirectories(t);
+    const result = spawnSync(process.execPath, [setupPath, '--shell', shell], {
+      env: {
+        ...process.env,
+        HOME: directories.homeDir,
+        XDG_CONFIG_HOME: directories.configHome,
+        SHELL: '/usr/bin/fish',
+      },
+      encoding: 'utf8',
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(result.stdout.includes(shortcut), result.stdout);
+    assert.ok(result.stdout.includes(multiPresetShortcut), result.stdout);
+    const otherDefinition = shell === 'fish'
+      ? "alias picode='pi -ps coding'"
+      : "abbr --add picode 'pi -ps coding'";
+    assert.ok(!result.stdout.includes(otherDefinition), result.stdout);
+  });
+}
+
+test('setup --dry-run keeps the shortcut hint out of the evaluated output', (t) => {
+  const directories = makeDirectories(t);
+  const result = spawnSync(process.execPath, [setupPath, '--dry-run', '--shell', 'fish'], {
+    env: {
+      ...process.env,
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/usr/bin/fish',
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, renderFunctionSource('fish', repoRoot));
+});
+
 test('setup rejects unsupported shells and missing option values', (t) => {
   const directories = makeDirectories(t);
   const env = {
