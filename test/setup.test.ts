@@ -22,7 +22,7 @@ import {
   shellIntegrationPaths,
 } from '../src/shell-integration.ts';
 
-import { pathOverride } from './env.ts';
+import { envWith, pathOverride } from './env.ts';
 
 const setupPath = fileURLToPath(new URL('../src/setup.ts', import.meta.url));
 const sourceDirectory = fileURLToPath(new URL('../src/', import.meta.url));
@@ -729,8 +729,10 @@ test('setup rejects powershell off Windows and fish on Windows', (t) => {
 test('setup fails when no PowerShell host is found', (t) => {
   const directories = makeDirectories(t);
   const result = spawnSync(process.execPath, [setupPath], {
-    env: {
-      ...process.env,
+    // envWith drops case variants of the keys below: Windows environment blocks
+    // can carry `SYSTEMROOT`/`ProgramFiles` in another casing, and a duplicate
+    // entry would let discovery find the machine's real host.
+    env: envWith(process.env, {
       PI_PRESETS_PLATFORM: 'win32',
       HOME: directories.homeDir,
       XDG_CONFIG_HOME: directories.configHome,
@@ -739,7 +741,7 @@ test('setup fails when no PowerShell host is found', (t) => {
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
       ...pathOverride(join(directories.directory, 'empty')),
-    },
+    }),
     encoding: 'utf8',
   });
 
@@ -809,8 +811,7 @@ test('setup --dry-run --shell powershell prints only the function', { skip: wind
 test('setup --dry-run --shell powershell fails when no host is found', (t) => {
   const directories = makeDirectories(t);
   const result = spawnSync(process.execPath, [setupPath, '--dry-run', '--shell', 'powershell'], {
-    env: {
-      ...process.env,
+    env: envWith(process.env, {
       PI_PRESETS_PLATFORM: 'win32',
       HOME: directories.homeDir,
       XDG_CONFIG_HOME: directories.configHome,
@@ -819,7 +820,7 @@ test('setup --dry-run --shell powershell fails when no host is found', (t) => {
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
       ...pathOverride(join(directories.directory, 'empty')),
-    },
+    }),
     encoding: 'utf8',
   });
 
