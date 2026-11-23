@@ -27,7 +27,6 @@ import { envWith, pathOverride } from './env.ts';
 const setupPath = fileURLToPath(new URL('../src/setup.ts', import.meta.url));
 const sourceDirectory = fileURLToPath(new URL('../src/', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
-const powershellHostUrl = new URL('../src/powershell-host.ts', import.meta.url).href;
 const teardownPath = fileURLToPath(new URL('../src/teardown.ts', import.meta.url));
 
 // Several Windows cases stand in for pwsh.exe/powershell.exe with POSIX shell
