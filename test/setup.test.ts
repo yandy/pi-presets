@@ -27,6 +27,12 @@ const sourceDirectory = fileURLToPath(new URL('../src/', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 const teardownPath = fileURLToPath(new URL('../src/teardown.ts', import.meta.url));
 
+// Several Windows cases stand in for pwsh.exe/powershell.exe with POSIX shell
+// scripts, which Windows cannot execute. The real hosts are covered instead by
+// test/windows-smoke.test.ts, which runs only on Windows.
+const windowsFakeHostsSkip = process.platform === 'win32'
+  && 'fake hosts are POSIX scripts; real hosts are covered by windows-smoke.test.ts';
+
 interface TestDirectories {
   directory: string;
   homeDir: string;
@@ -98,6 +104,7 @@ test('setup detects SHELL and prints the reload instruction', (t) => {
   const result = spawnSync(process.execPath, [setupPath], {
     env: {
       ...process.env,
+      PI_PRESETS_PLATFORM: 'linux',
       HOME: directories.homeDir,
       XDG_CONFIG_HOME: directories.configHome,
       SHELL: '/usr/bin/fish',
@@ -117,6 +124,7 @@ test('setup accepts an explicit shell override', (t) => {
   const result = spawnSync(process.execPath, [setupPath, '--shell', 'bash'], {
     env: {
       ...process.env,
+      PI_PRESETS_PLATFORM: 'linux',
       HOME: directories.homeDir,
       XDG_CONFIG_HOME: directories.configHome,
       SHELL: '/usr/bin/fish',
@@ -139,6 +147,7 @@ for (const [shell, shortcut, multiPresetShortcut] of [
     const result = spawnSync(process.execPath, [setupPath, '--shell', shell], {
       env: {
         ...process.env,
+        PI_PRESETS_PLATFORM: 'linux',
         HOME: directories.homeDir,
         XDG_CONFIG_HOME: directories.configHome,
         SHELL: '/usr/bin/fish',
@@ -161,6 +170,7 @@ test('setup --dry-run keeps the shortcut hint out of the evaluated output', (t) 
   const result = spawnSync(process.execPath, [setupPath, '--dry-run', '--shell', 'fish'], {
     env: {
       ...process.env,
+      PI_PRESETS_PLATFORM: 'linux',
       HOME: directories.homeDir,
       XDG_CONFIG_HOME: directories.configHome,
       SHELL: '/usr/bin/fish',
@@ -176,6 +186,7 @@ test('setup rejects unsupported shells and missing option values', (t) => {
   const directories = makeDirectories(t);
   const env = {
     ...process.env,
+    PI_PRESETS_PLATFORM: 'linux',
     HOME: directories.homeDir,
     XDG_CONFIG_HOME: directories.configHome,
     SHELL: '/usr/bin/nu',
@@ -199,7 +210,7 @@ for (const shell of ['fish', 'bash', 'zsh'] as const) {
     ['-c', 'command -v "$1"', 'shell-lookup', shell],
     { encoding: 'utf8' },
   );
-  const shellPath = shellLookup.stdout.trim();
+  const shellPath = (shellLookup.stdout ?? '').trim();
   test(`generated ${shell} function works from a path with shell metacharacters`, {
     skip: shellLookup.status !== 0,
     timeout: 5000,
@@ -241,6 +252,7 @@ for (const shell of ['fish', 'bash', 'zsh'] as const) {
       cwd,
       env: {
         ...process.env,
+        PI_PRESETS_PLATFORM: 'linux',
         HOME: directories.homeDir,
         XDG_CONFIG_HOME: directories.configHome,
         SHELL: shellPath,
@@ -400,7 +412,7 @@ test('setup --dry-run prints the function source and writes nothing', (t) => {
 });
 
 const bashLookup = spawnSync('sh', ['-c', 'command -v "$1"', 'shell-lookup', 'bash'], { encoding: 'utf8' });
-const bashPath = bashLookup.stdout.trim();
+const bashPath = (bashLookup.stdout ?? '').trim();
 
 test('setup --dry-run output evaluates into a working function', {
   skip: bashLookup.status !== 0,
@@ -435,6 +447,7 @@ test('setup --dry-run output evaluates into a working function', {
     cwd,
     env: {
       ...process.env,
+      PI_PRESETS_PLATFORM: 'linux',
       HOME: directories.homeDir,
       PATH: `${bin}${delimiter}${dirname(process.execPath)}`,
       FAKE_PI_CAPTURE: capture,
@@ -519,7 +532,7 @@ test('teardown rejects unknown options and unsupported shells', (t) => {
 });
 
 const fishLookup = spawnSync('sh', ['-c', 'command -v "$1"', 'shell-lookup', 'fish'], { encoding: 'utf8' });
-const fishPath = fishLookup.stdout.trim();
+const fishPath = (fishLookup.stdout ?? '').trim();
 
 test('removing integration aborts on duplicate or stray managed markers', (t) => {
   const directories = makeDirectories(t);
@@ -645,7 +658,7 @@ test('setup --dry-run output evaluates in fish with string collect', {
   });
 });
 
-test('setup writes both host profiles on Windows', (t) => {
+test('setup writes both host profiles on Windows', { skip: windowsFakeHostsSkip }, (t) => {
   const directories = makeDirectories(t);
   const hosts = join(directories.directory, 'hosts');
   mkdirSync(hosts, { recursive: true });
@@ -728,7 +741,7 @@ test('setup fails when no PowerShell host is found', (t) => {
   assert.match(result.stderr, /pwsh\.exe/);
 });
 
-test('setup aborts the whole install when one host query fails', (t) => {
+test('setup aborts the whole install when one host query fails', { skip: windowsFakeHostsSkip }, (t) => {
   const directories = makeDirectories(t);
   const hosts = join(directories.directory, 'hosts');
   mkdirSync(hosts, { recursive: true });
@@ -758,7 +771,7 @@ test('setup aborts the whole install when one host query fails', (t) => {
   assert.equal(existsSync(join(directories.directory, 'ps51', 'profile.ps1')), false);
 });
 
-test('setup --dry-run --shell powershell prints only the function', (t) => {
+test('setup --dry-run --shell powershell prints only the function', { skip: windowsFakeHostsSkip }, (t) => {
   const directories = makeDirectories(t);
   const hosts = join(directories.directory, 'hosts');
   mkdirSync(hosts, { recursive: true });
@@ -810,7 +823,7 @@ test('setup --dry-run --shell powershell fails when no host is found', (t) => {
   assert.match(result.stderr, /pwsh\.exe/);
 });
 
-test('setup --dry-run --shell powershell fails when a host query fails', (t) => {
+test('setup --dry-run --shell powershell fails when a host query fails', { skip: windowsFakeHostsSkip }, (t) => {
   const directories = makeDirectories(t);
   const hosts = join(directories.directory, 'hosts');
   mkdirSync(hosts, { recursive: true });
@@ -872,7 +885,7 @@ test('setup escapes single quotes in the reload hint', (t) => {
   );
 });
 
-test('teardown strips the profile a PowerShell host reports', (t) => {
+test('teardown strips the profile a PowerShell host reports', { skip: windowsFakeHostsSkip }, (t) => {
   const directories = makeDirectories(t);
   const hosts = join(directories.directory, 'hosts');
   mkdirSync(hosts, { recursive: true });
@@ -907,7 +920,7 @@ test('teardown strips the profile a PowerShell host reports', (t) => {
   assert.doesNotMatch(result.stderr, /looking at the default profile paths instead/);
 });
 
-test('teardown still strips the computed candidates when a host is broken', (t) => {
+test('teardown still strips the computed candidates when a host is broken', { skip: windowsFakeHostsSkip }, (t) => {
   const directories = makeDirectories(t);
   const hosts = join(directories.directory, 'hosts');
   mkdirSync(hosts, { recursive: true });

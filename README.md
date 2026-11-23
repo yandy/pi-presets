@@ -162,6 +162,8 @@ npm run typecheck
 npm test
 ```
 
-Windows 专属路径在 Linux 上没法真的跑，测试用 `PI_PRESETS_PLATFORM=win32` 覆盖平台判断。
+Windows 专属路径在 Linux 上没法真的跑，测试用 `PI_PRESETS_PLATFORM=win32` 覆盖平台判断；`test/windows-smoke.test.ts` 则只在 Windows 上运行，直接拿本机真实安装的 `pwsh.exe` / `powershell.exe` 走一遍发现、安装与卸载（会先备份 profile，跑完恢复）。
+
+CI 在 `ubuntu-latest` 与 `windows-latest` 上各跑一遍 `npm run typecheck` 与 `npm test`（见 `.github/workflows/ci.yml`）。
 
 行为契约与设计取舍见 `docs/superpowers/specs/`。
