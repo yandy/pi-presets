@@ -10,4 +10,4 @@
 npx ctx7 login
 # npx skills add upstash/context7 --skill find-docs -a universal -y
 ```
-- [superpowers](https://github.com/obra/superpowers)
+- [superpowers](https://github.com/obra/superpowers) —— 以 git 依赖安装，因此本目录 `.npmrc` 设了 `allow-git=root`（npm 12 默认 `none` 会报 `EALLOWGIT`）
