@@ -21,17 +21,23 @@ interface TeardownOptions {
   dryRun: boolean;
 }
 
+// Only the Windows and cross-platform rejection paths use this generated list;
+// the POSIX wording below is part of the CLI contract and stays verbatim.
+function listShells(shells: readonly string[]): string {
+  if (shells.length <= 1) return shells.join('');
+  return `${shells.slice(0, -1).join(', ')}, or ${shells[shells.length - 1]}`;
+}
+
 function unsupportedShellMessage(shell: string, platform: NodeJS.Platform): string {
   const label = shell || '(not set)';
-  const choices = supportedShells(platform).join(', ');
   if (platform === 'win32') {
-    return `Unsupported shell: ${label}. On Windows, choose ${choices}.`;
+    return `Unsupported shell: ${label}. On Windows, choose ${listShells(supportedShells(platform))}.`;
   }
   if (shell === 'powershell') {
     return `Unsupported shell: ${label}. PowerShell is not supported on this platform. `
-      + `Choose ${choices}.`;
+      + `Choose ${listShells(supportedShells(platform))}.`;
   }
-  return `Unsupported shell: ${label}. Choose ${choices}.`;
+  return `Unsupported shell: ${label}. Choose fish, bash, or zsh.`;
 }
 
 function parseTeardownArgs(
@@ -50,7 +56,11 @@ function parseTeardownArgs(
       throw new TeardownUsageError(`Unknown teardown option: ${argument}`);
     }
     if (index + 1 >= args.length) {
-      throw new TeardownUsageError(`--shell requires ${supportedShells(platform).join(', ')}.`);
+      throw new TeardownUsageError(
+        platform === 'win32'
+          ? `--shell requires ${listShells(supportedShells(platform))}.`
+          : '--shell requires fish, bash, or zsh.',
+      );
     }
     selected = args[index + 1];
     index += 1;

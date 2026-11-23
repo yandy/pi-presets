@@ -662,6 +662,9 @@ test('setup writes both host profiles on Windows', (t) => {
     env: {
       ...process.env,
       PI_PRESETS_PLATFORM: 'win32',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
       USERPROFILE: directories.homeDir,
       PATH: `${hosts};${process.env.PATH ?? ''}`,
     },
@@ -677,11 +680,24 @@ test('setup writes both host profiles on Windows', (t) => {
 test('setup rejects powershell off Windows and fish on Windows', (t) => {
   const directories = makeDirectories(t);
   const offWindows = spawnSync(process.execPath, [setupPath, '--shell', 'powershell'], {
-    env: { ...process.env, PI_PRESETS_PLATFORM: 'linux', HOME: directories.homeDir, SHELL: '/bin/bash' },
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'linux',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
+    },
     encoding: 'utf8',
   });
   const onWindows = spawnSync(process.execPath, [setupPath, '--shell', 'fish'], {
-    env: { ...process.env, PI_PRESETS_PLATFORM: 'win32', USERPROFILE: directories.homeDir },
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'win32',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
+      USERPROFILE: directories.homeDir,
+    },
     encoding: 'utf8',
   });
 
@@ -697,6 +713,9 @@ test('setup fails when no PowerShell host is found', (t) => {
     env: {
       ...process.env,
       PI_PRESETS_PLATFORM: 'win32',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
       USERPROFILE: directories.homeDir,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
@@ -724,6 +743,9 @@ test('setup aborts the whole install when one host query fails', (t) => {
     env: {
       ...process.env,
       PI_PRESETS_PLATFORM: 'win32',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
       USERPROFILE: directories.homeDir,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
@@ -748,6 +770,9 @@ test('setup --dry-run --shell powershell prints only the function', (t) => {
     env: {
       ...process.env,
       PI_PRESETS_PLATFORM: 'win32',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
       USERPROFILE: directories.homeDir,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
@@ -762,9 +787,14 @@ test('setup --dry-run --shell powershell prints only the function', (t) => {
   assert.match(result.stderr, /Would write/);
 });
 
-test('teardown still strips the computed candidates when a host is broken', (t) => {
+test('teardown strips the profile a PowerShell host reports', (t) => {
   const directories = makeDirectories(t);
-  const profile = join(directories.homeDir, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
+  const hosts = join(directories.directory, 'hosts');
+  mkdirSync(hosts, { recursive: true });
+  const host = join(hosts, 'pwsh.exe');
+  const profile = join(directories.directory, 'ps7', 'Microsoft.PowerShell_profile.ps1');
+  writeFileSync(host, `#!/bin/sh\nprintf '%s\\n' '${profile}'\n`);
+  chmodSync(host, 0o755);
   mkdirSync(dirname(profile), { recursive: true });
   writeFileSync(profile, '# >>> pi-presets >>>\nfunction pi { }\n# <<< pi-presets <<<\n');
 
@@ -772,8 +802,11 @@ test('teardown still strips the computed candidates when a host is broken', (t) 
     env: {
       ...process.env,
       PI_PRESETS_PLATFORM: 'win32',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
       USERPROFILE: directories.homeDir,
-      PATH: join(directories.directory, 'empty'),
+      PATH: hosts,
       ProgramFiles: join(directories.directory, 'none'),
       SystemRoot: join(directories.directory, 'none'),
     },
@@ -782,4 +815,82 @@ test('teardown still strips the computed candidates when a host is broken', (t) 
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(readFileSync(profile, 'utf8'), '');
+  assert.match(result.stdout, /Stripped the managed block from/);
+  assert.doesNotMatch(result.stderr, /looking at the default profile paths instead/);
+});
+
+test('teardown still strips the computed candidates when a host is broken', (t) => {
+  const directories = makeDirectories(t);
+  const hosts = join(directories.directory, 'hosts');
+  mkdirSync(hosts, { recursive: true });
+  const broken = join(hosts, 'pwsh.exe');
+  writeFileSync(broken, '#!/bin/sh\nexit 3\n');
+  chmodSync(broken, 0o755);
+  // The computed candidate is the only profile that can be found once the
+  // host itself cannot answer, so it is what the degraded run must strip.
+  const profile = join(directories.homeDir, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
+  mkdirSync(dirname(profile), { recursive: true });
+  writeFileSync(profile, '# >>> pi-presets >>>\nfunction pi { }\n# <<< pi-presets <<<\n');
+
+  const result = spawnSync(process.execPath, [teardownPath], {
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'win32',
+      HOME: directories.homeDir,
+      XDG_CONFIG_HOME: directories.configHome,
+      SHELL: '/bin/bash',
+      USERPROFILE: directories.homeDir,
+      PATH: hosts,
+      ProgramFiles: join(directories.directory, 'none'),
+      SystemRoot: join(directories.directory, 'none'),
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(profile, 'utf8'), '');
+  assert.match(result.stdout, /Stripped the managed block from/);
+  assert.match(result.stderr, /pwsh\.exe: exited with exit code 3/);
+  assert.match(result.stderr, /looking at the default profile paths instead/);
+});
+
+test('setup and teardown keep the POSIX usage wording verbatim', (t) => {
+  const directories = makeDirectories(t);
+  const env = {
+    ...process.env,
+    PI_PRESETS_PLATFORM: 'linux',
+    HOME: directories.homeDir,
+    XDG_CONFIG_HOME: directories.configHome,
+    SHELL: '/usr/bin/nu',
+  };
+
+  const setupMissing = spawnSync(process.execPath, [setupPath, '--shell'], { env, encoding: 'utf8' });
+  const setupUnsupported = spawnSync(process.execPath, [setupPath], { env, encoding: 'utf8' });
+  const teardownMissing = spawnSync(process.execPath, [teardownPath, '--shell'], { env, encoding: 'utf8' });
+  const teardownUnsupported = spawnSync(
+    process.execPath,
+    [teardownPath, '--shell', 'nu'],
+    { env, encoding: 'utf8' },
+  );
+
+  assert.equal(setupMissing.status, 2);
+  assert.equal(
+    setupMissing.stderr.trim(),
+    'pi-presets setup: --shell requires fish, bash, or zsh.',
+  );
+  assert.equal(setupUnsupported.status, 2);
+  assert.equal(
+    setupUnsupported.stderr.trim(),
+    'pi-presets setup: Unsupported shell: nu. Choose fish, bash, or zsh.',
+  );
+  assert.equal(teardownMissing.status, 2);
+  assert.equal(
+    teardownMissing.stderr.trim(),
+    'pi-presets teardown: --shell requires fish, bash, or zsh.',
+  );
+  assert.equal(teardownUnsupported.status, 2);
+  assert.equal(
+    teardownUnsupported.stderr.trim(),
+    'pi-presets teardown: Unsupported shell: nu. Choose fish, bash, or zsh.',
+  );
 });
