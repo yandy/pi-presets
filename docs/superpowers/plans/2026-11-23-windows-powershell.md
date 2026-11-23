@@ -411,7 +411,7 @@ Expected: FAIL，`Cannot find module '../src/powershell-profile.ts'`
 
 - `readProfileFile`：用 `readFileSync(path)` 拿 Buffer。路径不存在返回 `{kind:'missing'}`；`EF BB BF` → `{kind:'utf8-bom', text: rest.toString('utf8')}`；`FF FE` 或 `FE FF` → `throw new ProfileEncodingError('... UTF-16 ... save it as UTF-8 ...')`；否则 `{kind:'utf8', text: buffer.toString('utf8')}`。
 - `renderPowerShellBlock(repoRoot)`：`# >>> pi-presets >>>\r\n` + `renderPowerShellFunction(repoRoot)`（把 `\n` 全部换成 `\r\n`）+ `# <<< pi-presets <<<`。
-- `installPowerShellProfiles`：**先把所有 profile 读成 `ProfileContents`（含编码与标记校验），全部通过后才写**；写入时新建文件写 UTF-8 BOM + 块 + `\r\n`，已有文件用 `updateRc(text, block, path, '\r\n')` 拼接并原样保留 BOM 状态；父目录用 `mkdirSync(dirname(path), {recursive:true})`。返回真正写入的路径数组（内容已一致的文件也算写入，与 POSIX 行为一致）。
+- `installPowerShellProfiles`：**先把所有 profile 读成 `ProfileContents`（含编码与标记校验），全部通过后才写**；写入时新建文件写 UTF-8 BOM + 块 + `\r\n`；已有文件用 `updateRc(text, block, path, '\r\n')` 拼接并原样保留 BOM 状态，**但若原本无 BOM 而本次函数含非 ASCII 字符（`/[\u0080-\uFFFF]/` 命中 `renderPowerShellFunction(repoRoot)`），则先补一个 UTF-8 BOM**（否则 5.1 会按 ANSI 解码函数里的路径）；父目录用 `mkdirSync(dirname(path), {recursive:true})`。返回真正写入的路径数组（内容已一致的文件也算写入，与 POSIX 行为一致）。
 - `removePowerShellProfiles`：同样先读全部、校验标记，再写；`missing` 与「无标记」都跳过，返回真正被剥离的路径数组。
 - `powerShellProfileCandidates({env})`：`USERPROFILE` 缺失时返回空数组；用 `node:path` 的 `join`（**不是** `win32.join`）拼接——生产在 win32 上跑，`join` 就是 `win32.join`；用宿主 `join` 才能让 Linux 上的测试造出真实可写的路径。依次 `Documents/PowerShell`、`Documents/WindowsPowerShell`，`OneDrive` 存在时再加两条（顺序见测试）。
 
