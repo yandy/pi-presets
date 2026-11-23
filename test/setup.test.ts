@@ -168,6 +168,10 @@ for (const shell of ['fish', 'bash', 'zsh'] as const) {
     const capture = join(directories.directory, `${shell}-capture.json`);
     mkdirSync(bin);
     mkdirSync(cwd);
+    // The fake Pi is an extensionless CommonJS script, so pin its module type:
+    // a stray package.json above the temp dir (/tmp/package.json says
+    // "type": "module") would otherwise make Node load it as ESM.
+    writeFileSync(join(bin, 'package.json'), '{"type":"commonjs"}\n');
     mkdirSync(join(repoRoot, 'coding'), { recursive: true });
     cpSync(sourceDirectory, join(repoRoot, 'src'), { recursive: true });
     writeFileSync(join(repoRoot, 'coding', 'package.json'), '{"name":"coding"}');
@@ -366,6 +370,8 @@ test('setup --dry-run output evaluates into a working function', {
   const capture = join(directories.directory, 'capture.json');
   mkdirSync(bin);
   mkdirSync(cwd);
+  // See the module-type note above: the fake Pi fixture must stay CommonJS.
+  writeFileSync(join(bin, 'package.json'), '{"type":"commonjs"}\n');
   mkdirSync(join(repoRootWithQuotes, 'coding'), { recursive: true });
   cpSync(sourceDirectory, join(repoRootWithQuotes, 'src'), { recursive: true });
   writeFileSync(join(repoRootWithQuotes, 'coding', 'package.json'), '{"name":"coding"}');
@@ -561,6 +567,8 @@ test('setup --dry-run output evaluates in fish with string collect', {
   const capture = join(directories.directory, 'fish-capture.json');
   mkdirSync(bin);
   mkdirSync(cwd);
+  // See the module-type note above: the fake Pi fixture must stay CommonJS.
+  writeFileSync(join(bin, 'package.json'), '{"type":"commonjs"}\n');
   mkdirSync(join(repoRootWithQuotes, 'coding'), { recursive: true });
   cpSync(sourceDirectory, join(repoRootWithQuotes, 'src'), { recursive: true });
   writeFileSync(join(repoRootWithQuotes, 'coding', 'package.json'), '{"name":"coding"}');

@@ -55,6 +55,11 @@ function makeHarness(t: TestContext, source: string = recordingPi): Harness {
   const capture = join(directory, 'capture.json');
   mkdirSync(bin);
   mkdirSync(cwd);
+  // The fake Pi is an extensionless CommonJS script. Node picks the module
+  // format from the nearest package.json, so pin it here: otherwise a stray
+  // package.json above the temp dir (for example /tmp/package.json with
+  // "type": "module") makes Node run the fixture as ESM without `require`.
+  writeFileSync(join(bin, 'package.json'), '{"type":"commonjs"}\n');
   const executable = join(bin, 'pi');
   writeFileSync(executable, `#!${process.execPath}\n${source}`);
   chmodSync(executable, 0o755);
