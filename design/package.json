@@ -1,0 +1,10 @@
+{
+  "name": "@yandy/pi-preset-design",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Empty design preset placeholder",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT"
+}
