@@ -27,7 +27,7 @@ import { envWith, pathOverride } from './env.ts';
 const setupPath = fileURLToPath(new URL('../src/setup.ts', import.meta.url));
 const sourceDirectory = fileURLToPath(new URL('../src/', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
-const powershellHostPath = fileURLToPath(new URL('../src/powershell-host.ts', import.meta.url));
+const powershellHostUrl = new URL('../src/powershell-host.ts', import.meta.url).href;
 const teardownPath = fileURLToPath(new URL('../src/teardown.ts', import.meta.url));
 
 // Several Windows cases stand in for pwsh.exe/powershell.exe with POSIX shell
@@ -747,7 +747,7 @@ test('setup fails when no PowerShell host is found', (t) => {
   if (result.status !== 1) {
     // Diagnose which host the child still finds, from the same environment.
     const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `
-      import { discoverPowerShellHosts } from ${JSON.stringify(powershellHostPath)};
+      import { discoverPowerShellHosts } from ${JSON.stringify(powershellHostUrl)};
       const env = process.env;
       const result = discoverPowerShellHosts({ platform: 'win32', env, pathValue: env.PATH ?? '' });
       console.log(JSON.stringify({ PATH: env.PATH, Path: env.Path, ProgramFiles: env.ProgramFiles, SystemRoot: env.SystemRoot, hosts: result.hosts }, null, 1));
