@@ -57,7 +57,7 @@ test('installs each dependency group locally with the lockfile-aware npm command
     calls.push({ command, args, options });
   };
 
-  const installed = await installPresetDependencies({ repoRoot: root, env: {}, runner });
+  const installed = await installPresetDependencies({ repoRoot: root, env: {}, platform: 'linux', runner });
 
   assert.deepEqual(installed, ['alpha', 'beta', 'gamma']);
   assert.deepEqual(calls, [

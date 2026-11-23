@@ -14,6 +14,13 @@ import {
 
 const repoRoot = "/repo's dir/pi-presets";
 
+// The generated line embeds a path joined with the host separator, so build the
+// expectation the same way instead of hardcoding POSIX slashes.
+function generatedNodeLine(root: string): string {
+  const cliPath = join(root, 'src', 'cli.ts').replaceAll("'", "''");
+  return `& node '${cliPath}' @args`;
+}
+
 function makeDir(t: test.TestContext): string {
   const directory = mkdtempSync(join(tmpdir(), 'pi-presets-profile-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -61,7 +68,7 @@ test('creates the profile with a BOM and CRLF and quotes single quotes', (t) => 
   assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
   const text = bytes.toString('utf8').slice(1);
   assert.ok(text.startsWith('# >>> pi-presets >>>\r\n'), text);
-  assert.ok(text.includes("& node '/repo''s dir/pi-presets/src/cli.ts' @args"), text);
+  assert.ok(text.includes(generatedNodeLine(repoRoot)), text);
   assert.ok(text.endsWith('# <<< pi-presets <<<\r\n'), text);
 });
 
@@ -74,7 +81,7 @@ test('promotes a BOM on a BOM-less profile when the function has non-ASCII', (t)
 
   const bytes = readFileSync(profile);
   assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
-  assert.ok(bytes.toString('utf8').includes("& node '/repo''s 中文/pi-presets/src/cli.ts' @args"));
+  assert.ok(bytes.toString('utf8').includes(generatedNodeLine("/repo's 中文/pi-presets")));
 });
 
 test('leaves an ASCII BOM-less profile without a BOM', (t) => {

@@ -16,6 +16,8 @@ import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import { pathOverride } from './env.ts';
+
 const cliPath = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
@@ -38,6 +40,8 @@ process.stdin.on('end', () => {
 
 interface Harness {
   bin: string;
+  /** The resolved fake-Pi command the CLI is expected to find. */
+  executable: string;
   capture: string;
   cwd: string;
   env: NodeJS.ProcessEnv;
@@ -55,23 +59,36 @@ function makeHarness(t: TestContext, source: string = recordingPi): Harness {
   const capture = join(directory, 'capture.json');
   mkdirSync(bin);
   mkdirSync(cwd);
-  // The fake Pi is an extensionless CommonJS script. Node picks the module
-  // format from the nearest package.json, so pin it here: otherwise a stray
-  // package.json above the temp dir (for example /tmp/package.json with
-  // "type": "module") makes Node run the fixture as ESM without `require`.
+  // The fake Pi is a CommonJS script. Node picks the module format from the
+  // nearest package.json, so pin it here: otherwise a stray package.json above
+  // the temp dir (for example /tmp/package.json with "type": "module") makes
+  // Node run the fixture as ESM without `require`.
   writeFileSync(join(bin, 'package.json'), '{"type":"commonjs"}\n');
-  const executable = join(bin, 'pi');
-  writeFileSync(executable, `#!${process.execPath}\n${source}`);
-  chmodSync(executable, 0o755);
+
+  // POSIX runs the script directly through its shebang. Windows cannot spawn an
+  // extensionless file at all, so it gets the shape the real npm/managed install
+  // has: a `pi.cmd` shim next to the script, which also exercises the cmd.exe
+  // launch path in src/windows-command.ts.
+  let executable: string;
+  if (process.platform === 'win32') {
+    writeFileSync(join(bin, 'pi-fake.js'), source);
+    executable = join(bin, 'pi.cmd');
+    writeFileSync(executable, `@echo off\r\n"${process.execPath}" "%~dp0pi-fake.js" %*\r\n`);
+  } else {
+    executable = join(bin, 'pi');
+    writeFileSync(executable, `#!${process.execPath}\n${source}`);
+    chmodSync(executable, 0o755);
+  }
   t.after(() => rmSync(directory, { recursive: true, force: true }));
 
   return {
     bin,
+    executable,
     capture,
     cwd,
     env: {
       ...process.env,
-      PATH: bin,
+      ...pathOverride(bin),
       FAKE_PI_CAPTURE: capture,
     },
   };
@@ -125,7 +142,10 @@ test('returns the real Pi exit code', (t) => {
   assert.equal(result.status, 23);
 });
 
-test('forwards SIGTERM to the real Pi and returns its exit code', { timeout: 5000 }, async (t) => {
+test('forwards SIGTERM to the real Pi and returns its exit code', {
+  timeout: 5000,
+  skip: process.platform === 'win32' && 'signal semantics differ on Windows',
+}, async (t) => {
   const signalPi = String.raw`
 const fs = require('node:fs');
 fs.writeFileSync(process.env.FAKE_PI_READY, 'ready');
@@ -163,7 +183,10 @@ setInterval(() => {}, 1000);
   assert.equal(readFileSync(harness.capture, 'utf8'), 'received SIGTERM');
 });
 
-test('does not forward a second SIGINT after foreground process-group delivery', { timeout: 5000 }, async (t) => {
+test('does not forward a second SIGINT after foreground process-group delivery', {
+  timeout: 5000,
+  skip: process.platform === 'win32' && 'process groups and SIGINT delivery are POSIX-only',
+}, async (t) => {
   const interruptiblePi = String.raw`
 const fs = require('node:fs');
 let interrupts = 0;
@@ -206,19 +229,34 @@ setInterval(() => {}, 1000);
   assert.equal(readFileSync(harness.capture, 'utf8'), '1');
 });
 
-test('fails clearly when PATH has no executable Pi', (t) => {
+test('fails clearly when PATH has no candidate Pi command', (t) => {
   const harness = makeHarness(t);
-  rmSync(join(harness.bin, 'pi'));
-  mkdirSync(join(harness.bin, 'pi'));
+  // A directory carrying the shim name is not a command on either platform.
+  rmSync(harness.executable);
+  mkdirSync(harness.executable);
+
+  const result = runCli(harness, ['--version']);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /could not find.*pi|pi is not on PATH/i);
+  assert.equal(existsSync(harness.capture), false);
+});
+
+test('ignores a Pi file that is not executable', {
+  skip: process.platform === 'win32' && 'Windows has no executable bit to check',
+}, (t) => {
+  const harness = makeHarness(t);
   const nonExecutableBin = join(harness.cwd, 'non-executable-bin');
   mkdirSync(nonExecutableBin);
   writeFileSync(join(nonExecutableBin, 'pi'), 'not executable');
+  rmSync(harness.executable);
+
   const result = runCli(harness, ['--version'], {
-    env: { PATH: `${harness.bin}${delimiter}${nonExecutableBin}` },
+    env: { ...pathOverride(`${nonExecutableBin}${delimiter}${harness.bin}`) },
   });
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /could not find.*pi/i);
+  assert.match(result.stderr, /could not find.*pi|pi is not on PATH/i);
   assert.equal(existsSync(harness.capture), false);
 });
 

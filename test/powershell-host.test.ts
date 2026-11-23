@@ -16,6 +16,12 @@ function makeDir(t: test.TestContext): string {
   return directory;
 }
 
+// The fake hosts are POSIX shell scripts, so the cases that spawn them cannot
+// run on Windows. The cases that inject `query` are platform-neutral and skip
+// nothing.
+const posixFakeHostsSkip = process.platform === 'win32'
+  && 'fake hosts are POSIX scripts; real hosts are covered by windows-smoke.test.ts';
+
 // 假宿主：忽略参数，直接打印一个路径，模拟 `$PROFILE`。
 function writeFakeHost(directory: string, name: string, profilePath: string): string {
   const path = join(directory, name);
@@ -33,7 +39,7 @@ test('returns nothing off Windows', () => {
   assert.deepEqual(result, { hosts: [], failures: [] });
 });
 
-test('discovers pwsh on PATH and uses its $PROFILE', (t) => {
+test('discovers pwsh on PATH and uses its $PROFILE', { skip: posixFakeHostsSkip }, (t) => {
   const directory = makeDir(t);
   const profilePath = join(directory, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
   writeFakeHost(directory, 'pwsh.exe', profilePath);
@@ -50,7 +56,7 @@ test('discovers pwsh on PATH and uses its $PROFILE', (t) => {
   ]);
 });
 
-test('discovers both hosts, pwsh first', (t) => {
+test('discovers both hosts, pwsh first', { skip: posixFakeHostsSkip }, (t) => {
   const directory = makeDir(t);
   writeFakeHost(directory, 'pwsh.exe', 'C:\\Users\\me\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1');
   writeFakeHost(directory, 'powershell.exe', 'C:\\Users\\me\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1');
@@ -60,7 +66,7 @@ test('discovers both hosts, pwsh first', (t) => {
   assert.deepEqual(result.hosts.map((host) => host.kind), ['pwsh', 'windows-powershell']);
 });
 
-test('falls back to the known install locations', (t) => {
+test('falls back to the known install locations', { skip: posixFakeHostsSkip }, (t) => {
   const directory = makeDir(t);
   const programFiles = join(directory, 'Program Files');
   const systemRoot = join(directory, 'Windows');
