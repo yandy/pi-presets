@@ -2,7 +2,7 @@
   "name": "@yandy/pi-preset-coding",
   "version": "0.1.0",
   "private": true,
-  "description": "Pi 组合包：coding 类项目",
+  "description": "Pi 组合包：编程相关",
   "files": [
     "package.json",
     "package-lock.json",
