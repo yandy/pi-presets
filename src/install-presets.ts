@@ -20,6 +20,19 @@ interface PresetManifest {
 interface InstallPresetOptions {
   repoRoot: string;
   runner?: ProcessRunner;
+  env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+}
+
+export interface ResolveNpmCommandOptions {
+  env: NodeJS.ProcessEnv;
+  platform: NodeJS.Platform;
+  args: readonly string[];
+}
+
+export interface NpmCommand {
+  command: string;
+  args: string[];
 }
 
 function errorMessage(error: unknown): string {
@@ -41,6 +54,23 @@ function runProcess(command: string, args: string[], options: SpawnOptions): Pro
   });
 }
 
+// npm is a .cmd shim on Windows, which spawn() cannot execute directly. Lifecycle
+// scripts inherit npm_execpath, so rerunning the current node against it is both
+// platform-correct and version-pinned; otherwise fall back to a shell.
+export function resolveNpmCommand({ env, platform, args }: ResolveNpmCommandOptions): NpmCommand {
+  const npmExecPath = env.npm_execpath;
+  if (npmExecPath !== undefined && npmExecPath !== '') {
+    return { command: process.execPath, args: [npmExecPath, ...args] };
+  }
+  if (platform === 'win32') {
+    return {
+      command: env.ComSpec ?? 'cmd.exe',
+      args: ['/d', '/s', '/c', ['npm', ...args].join(' ')],
+    };
+  }
+  return { command: 'npm', args: [...args] };
+}
+
 function readManifest(directory: string, name: string): PresetManifest {
   try {
     return JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as PresetManifest;
@@ -59,6 +89,8 @@ function hasDependencies(manifest: PresetManifest): boolean {
 export async function installPresetDependencies({
   repoRoot,
   runner = runProcess,
+  env = process.env,
+  platform = process.platform,
 }: InstallPresetOptions): Promise<string[]> {
   const names = readdirSync(repoRoot, { withFileTypes: true })
     .filter((entry) => entry.name !== 'node_modules' && entry.isDirectory())
@@ -74,8 +106,9 @@ export async function installPresetDependencies({
     if (!hasDependencies(manifest)) continue;
 
     const command = existsSync(join(directory, 'package-lock.json')) ? 'ci' : 'install';
+    const resolved = resolveNpmCommand({ env, platform, args: [command] });
     try {
-      await runner('npm', [command], { cwd: directory, stdio: 'inherit' });
+      await runner(resolved.command, resolved.args, { cwd: directory, stdio: 'inherit' });
     } catch (error: unknown) {
       throw new Error(`Dependency installation failed for preset "${name}": ${errorMessage(error)}`, {
         cause: error,

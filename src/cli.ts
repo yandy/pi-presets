@@ -1,40 +1,23 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
-import {
-  accessSync,
-  constants as fsConstants,
-  statSync,
-} from 'node:fs';
 import { constants as osConstants } from 'node:os';
-import { delimiter, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { expandPresetArgs, PresetUsageError } from './presets.ts';
+import { resolveRealPi, spawnSpec, type RealPiCommand } from './windows-command.ts';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
-function findRealPi(pathValue: string = ''): string {
-  for (const directory of pathValue.split(delimiter)) {
-    const candidate = resolve(directory || '.', 'pi');
-    try {
-      if (!statSync(candidate).isFile()) continue;
-      accessSync(candidate, fsConstants.X_OK);
-      return candidate;
-    } catch {
-      // Try the next PATH entry.
-    }
-  }
-  throw new Error('Could not find an executable pi in PATH.');
-}
-
-function runPi(realPi: string, args: readonly string[]): Promise<number> {
+function runPi(realPi: RealPiCommand, args: readonly string[]): Promise<number> {
   return new Promise((resolveExit, reject) => {
-    const child = spawn(realPi, [...args], {
+    const spec = spawnSpec(realPi, args);
+    const child = spawn(spec.file, spec.args, {
       cwd: process.cwd(),
       env: process.env,
       shell: false,
       stdio: 'inherit',
+      windowsVerbatimArguments: spec.windowsVerbatimArguments,
     });
     const handledSignals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
     const handlers = new Map<NodeJS.Signals, () => void>();
@@ -73,7 +56,11 @@ function runPi(realPi: string, args: readonly string[]): Promise<number> {
 
 try {
   const args = expandPresetArgs(process.argv.slice(2), repoRoot);
-  const realPi = findRealPi(process.env.PATH);
+  const realPi = resolveRealPi({
+    pathValue: process.env.PATH ?? '',
+    platform: process.platform,
+    pathExt: process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD',
+  });
   process.exitCode = await runPi(realPi, args);
 } catch (error: unknown) {
   const message = error instanceof Error ? error.message : String(error);

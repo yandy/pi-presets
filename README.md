@@ -20,6 +20,34 @@ npm run setup -- --shell fish # 或 bash、zsh
 
 重复执行 `setup` 不会重复写入 shell 配置。
 
+支持的 shell 随平台不同：Linux/macOS 上是 fish、bash、zsh，Windows 上只有 `powershell`。
+
+### Windows（PowerShell）
+
+Windows 上不用指定 shell，`setup` 默认就装 PowerShell：
+
+```powershell
+git clone https://github.com/yandy/pi-presets.git C:\path\to\somewhere
+cd C:\path\to\somewhere
+npm install
+npm run setup
+```
+
+`setup` 先找出本机装了哪些 PowerShell 宿主（先 `pwsh.exe`，再 `powershell.exe`），逐个问出各自的 `$PROFILE`，再把同一个受管块写进所有这些 profile：PowerShell 7 与 Windows PowerShell 5.1 因此各有一份 `pi` function。装完重启 PowerShell，或在其中执行：
+
+```powershell
+. $PROFILE
+```
+
+`--shell powershell` 可以显式指定（等于 Windows 上的默认值），但只在 Windows 上有效，其他平台报错并以退出码 2 结束：
+
+```console
+$ npm run setup -- --shell powershell
+pi-presets setup: Unsupported shell: powershell. PowerShell is not supported on this platform. Choose fish, bash, or zsh.
+```
+
+一个宿主都没找到时 `setup` 报错退出（退出码 1）并列出找过的位置；找到了却问不出 `$PROFILE` 时整次安装中止，一个文件都不写。profile 的编码限制见「已知限制（Windows）」。
+
 ### 只在当前 shell 生效（不落盘）
 
 ```sh
@@ -30,7 +58,13 @@ eval "$(npm run --silent setup -- --dry-run)"
 eval (npm run --silent setup -- --dry-run | string collect)
 ```
 
-执行后当前 shell 有 `pi`，关掉即消失，磁盘上不留东西。命令里的 `--silent` 和 fish 的 `| string collect` 都不能省。
+```powershell
+# PowerShell：先摆好编码，再吃下 stdout
+[Console]::OutputEncoding = [Text.Encoding]::UTF8; $OutputEncoding = [Text.Encoding]::UTF8
+Invoke-Expression (& npm.cmd run --silent setup -- --dry-run --shell powershell | Out-String)
+```
+
+执行后当前 shell 有 `pi`，关掉即消失，磁盘上不留东西。命令里的 `--silent` 和 fish 的 `| string collect` 都不能省。PowerShell 的 stdout 只有函数定义本身（`--dry-run` 的提示都走 stderr），所以 `Out-String` 不能省；第一行的编码设置也不能省，否则 Node 写出的 UTF-8 字节会按当前代码页解码，仓库路径含非 ASCII 字符时函数里的路径会乱码。
 
 ### 卸载
 
@@ -41,6 +75,8 @@ npm run teardown -- --dry-run       # 只打印将删除的内容
 ```
 
 只动 `setup` 写下的标记块和函数文件。重复执行是空操作；标记块被手工改坏时整体中止，不改任何文件。
+
+Windows 上 `npm run teardown` 会剥离 PowerShell 7 与 5.1 两个 profile 里的受管块：宿主报告的路径，加上 `%USERPROFILE%\Documents\…` 和 `%OneDrive%\Documents\…` 下的默认位置（只动真含标记块的文件）。某个宿主查不出自己的 `$PROFILE` 时不阻断卸载，`teardown` 会在 stderr 说明并退回默认路径扫描，仍退出 0。`--shell powershell` 同样只在 Windows 上有效。
 
 ### 移动仓库目录
 
@@ -68,6 +104,12 @@ abbr --add piwork 'pi -ps office,design'
 # bash / zsh：alias
 alias picode='pi -ps coding'
 alias piwork='pi -ps office,design'
+```
+
+```powershell
+# PowerShell：函数（Set-Alias 不能带参数，所以用 function）
+function picode { pi -ps coding @args }
+function piwork { pi -ps office,design @args }
 ```
 
 简写只是省去输入，等价于完整写法，不影响参数透传：`picode -p "list ts files"` 等于 `pi -ps coding -p "list ts files"`。
@@ -100,6 +142,17 @@ pi -e /path/to/somewhere/coding -e /path/to/somewhere/office
 
 未知的 preset 会在启动 Pi 前报错并列出可用名称。shell function 只在加载了对应配置的交互式 shell 中生效；独立脚本、未加载配置的子 shell 或其他程序直接启动 `pi` 时，请继续使用完整的 `pi -e /path/to/preset` 形式。
 
+## 已知限制（Windows）
+
+- **`%VAR%` 和 `!` 会被 cmd 改写。** npm 装出来的 `pi` 是 `pi.cmd`，Node 只能经 `cmd.exe` 启动它，cmd 会展开参数里的 `%VAR%`，在启用延迟展开的场合还会吃掉 `!`。这两个字符没有既安全又不破坏内容的转义写法，只能原样传下去。
+- **参数含 `"` 时 `pi.cmd` 直接拒绝。** 还是因为 `pi` 是 `pi.cmd`：cmd.exe 不把 MSVCRT 的 `\"` 当转义，而是关掉我们加的那对引号，后面的 `&`、`|` 就成了真正的命令分隔符——这是命令注入的口子。没有 Windows 就没法验证一套安全的 cmd 引用写法，所以宁可报错退出（退出码 1），也不拼一条可能跑起别的命令的命令行。`pi.exe` 直启不受影响。
+- **卸载可能留下 3 字节 BOM。** 既有 profile 本来没有 BOM、而生成的函数含非 ASCII 字符（例如仓库路径带中文）时，`setup` 会先补一个 UTF-8 BOM，否则 5.1 按 ANSI 解码、函数里的路径会失效；`teardown` 只剥受管块，那个 BOM 会留在文件里。
+- **5.1 与 7 的传参规则不同。** Windows PowerShell 5.1 用 `Legacy` 规则，PowerShell 7.3+ 在 Windows 上默认 `Standard`（`$PSNativeCommandArgumentPassing`），含内嵌引号或以 `\` 结尾的参数在 5.1 上会走样。包装函数不设这个变量：它在 5.1 上不存在，设了也没用。
+- **UTF-16 的 profile 会被拒绝。** profile 若被另存为 UTF-16（5.1 的 `>` 和 `Out-File` 默认就是），`setup` 与 `teardown` 都不处理，报 `this profile is a UTF-16 encoded file; save it as UTF-8 before running setup or teardown.` 并以退出码 1 结束，一个文件都不改，请先另存为 UTF-8。新建的 profile 写 UTF-8 BOM，已有 BOM 原样保留；本来没有 BOM、实际是 ANSI 编码的 profile 按 UTF-8 处理，其中的非 ASCII 内容会被写坏。
+- **`Set-Alias pi` 会遮蔽包装函数。** 别名优先级高于函数，自己设过 `Set-Alias pi …` 的话 `pi -ps coding` 不会走到包装函数，preset 也就不会展开；先 `Remove-Item Alias:pi`。
+- **自定义位置的 profile 扫不到。** 安装只写宿主自己报告的 `$PROFILE`（`Microsoft.PowerShell_profile.ps1`），不写 `profile.ps1`（AllHosts）；卸载多扫 `%USERPROFILE%\Documents\…` 与 `%OneDrive%\Documents\…` 下的默认位置，宿主不报告、你另设在别处的 profile 不在其中。
+- **真实冒烟需要一台 Windows。** 本机（Linux）跑不了：要在 PowerShell 7 与 Windows PowerShell 5.1 里各跑一遍 `pi -ps coding`、`pi -ps coding -p "list ts files"`，再跑 `npm run teardown` 确认 profile 逐字节还原。
+
 ## 开发
 
 实现和测试使用 TypeScript。Node 22.19 或更新版本直接运行可擦除的 `.ts` 语法，无需构建步骤；相对导入需要显式使用 `.ts` 后缀。
@@ -108,5 +161,7 @@ pi -e /path/to/somewhere/coding -e /path/to/somewhere/office
 npm run typecheck
 npm test
 ```
+
+Windows 专属路径在 Linux 上没法真的跑，测试用 `PI_PRESETS_PLATFORM=win32` 覆盖平台判断。
 
 行为契约与设计取舍见 `docs/superpowers/specs/`。

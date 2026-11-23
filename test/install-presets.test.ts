@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   installPresetDependencies,
+  resolveNpmCommand,
   type ProcessRunner,
 } from '../src/install-presets.ts';
 import { listPresets } from '../src/presets.ts';
@@ -56,7 +57,7 @@ test('installs each dependency group locally with the lockfile-aware npm command
     calls.push({ command, args, options });
   };
 
-  const installed = await installPresetDependencies({ repoRoot: root, runner });
+  const installed = await installPresetDependencies({ repoRoot: root, env: {}, runner });
 
   assert.deepEqual(installed, ['alpha', 'beta', 'gamma']);
   assert.deepEqual(calls, [
@@ -89,6 +90,48 @@ test('reports the preset whose dependency installation fails', async (t) => {
     }),
     /broken-install.*npm exploded/i,
   );
+});
+
+test('prefers the npm executable that started the lifecycle script', () => {
+  const resolved = resolveNpmCommand({
+    env: { npm_execpath: '/usr/local/lib/node_modules/npm/bin/npm-cli.js' },
+    platform: 'win32',
+    args: ['ci'],
+  });
+
+  assert.deepEqual(resolved, {
+    command: process.execPath,
+    args: ['/usr/local/lib/node_modules/npm/bin/npm-cli.js', 'ci'],
+  });
+});
+
+test('falls back to cmd.exe on Windows and to npm elsewhere', () => {
+  assert.deepEqual(
+    resolveNpmCommand({ env: { ComSpec: 'C:\\Windows\\system32\\cmd.exe' }, platform: 'win32', args: ['ci'] }),
+    { command: 'C:\\Windows\\system32\\cmd.exe', args: ['/d', '/s', '/c', 'npm ci'] },
+  );
+  assert.deepEqual(
+    resolveNpmCommand({ env: {}, platform: 'linux', args: ['ci'] }),
+    { command: 'npm', args: ['ci'] },
+  );
+});
+
+test('runs the resolved npm command for each preset', async (t) => {
+  const root = makeTree(t);
+  addPreset(root, 'alpha', { dependencies: { a: '1.0.0' } });
+  const calls: { command: string; args: string[] }[] = [];
+
+  const installed = await installPresetDependencies({
+    repoRoot: root,
+    env: { npm_execpath: '/npm-cli.js' },
+    platform: 'win32',
+    runner: async (command, args) => {
+      calls.push({ command, args });
+    },
+  });
+
+  assert.deepEqual(installed, ['alpha']);
+  assert.deepEqual(calls, [{ command: process.execPath, args: ['/npm-cli.js', 'install'] }]);
 });
 
 test('placeholder presets are empty private packages and every preset is listed', () => {
