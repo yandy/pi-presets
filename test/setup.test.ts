@@ -750,7 +750,8 @@ test('setup fails when no PowerShell host is found', (t) => {
       import { discoverPowerShellHosts } from ${JSON.stringify(powershellHostUrl)};
       const env = process.env;
       const result = discoverPowerShellHosts({ platform: 'win32', env, pathValue: env.PATH ?? '' });
-      console.log(JSON.stringify({ PATH: env.PATH, Path: env.Path, ProgramFiles: env.ProgramFiles, SystemRoot: env.SystemRoot, hosts: result.hosts }, null, 1));
+      const relevant = Object.fromEntries(Object.entries(env).filter(([key]) => /program|systemroot|^path$/i.test(key)));
+      console.log(JSON.stringify({ relevant, hosts: result.hosts }, null, 1));
     `], { env, encoding: 'utf8' });
     assert.fail(`expected exit 1\n${result.stdout}${result.stderr}\n--- probe ---\n${probe.stdout}${probe.stderr}`);
   }
