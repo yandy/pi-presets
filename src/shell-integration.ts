@@ -128,7 +128,10 @@ export function updateRc(
     return original.slice(0, span.start) + block + original.slice(span.end);
   }
 
-  const withTrailingEol = original.length > 0 && !original.endsWith(eol)
+  // Any final newline terminates the file, whatever its flavour: appending an
+  // eol to a file that already ends with '\n' would make an LF-only rc gain a
+  // CRLF on install and keep it after remove, i.e. break the round trip.
+  const withTrailingEol = original.length > 0 && !original.endsWith('\n')
     ? `${original}${eol}`
     : original;
   const separation = withTrailingEol.length > 0 ? eol : '';
@@ -163,6 +166,9 @@ export function stripManagedBlock(original: string, source: string): string {
   let prefix = original.slice(0, span.start);
   let suffix = original.slice(span.end);
   if (prefix.endsWith('\r\n\r\n')) {
+    prefix = prefix.slice(0, -2);
+    // An LF-terminated file gets a CRLF separation, so its prefix ends '\n\r\n'.
+  } else if (prefix.endsWith('\n\r\n')) {
     prefix = prefix.slice(0, -2);
   } else if (prefix.endsWith('\n\n')) {
     prefix = prefix.slice(0, -1);

@@ -115,6 +115,32 @@ test('removal strips a block from a CRLF file byte for byte', (t) => {
   assert.equal(readFileSync(profile, 'utf8'), original);
 });
 
+test('removal restores an LF-only single-line profile that already ends with a newline', (t) => {
+  const directory = makeDir(t);
+  const profile = join(directory, 'profile.ps1');
+  const original = 'before\n';
+  writeFileSync(profile, original);
+  installPowerShellProfiles({ profilePaths: [profile], repoRoot });
+
+  const installed = readFileSync(profile, 'utf8');
+  assert.ok(installed.startsWith('before\n\r\n# >>> pi-presets >>>\r\n'), installed);
+
+  removePowerShellProfiles({ profilePaths: [profile] });
+  assert.equal(readFileSync(profile, 'utf8'), original);
+});
+
+test('removal restores an LF-only profile that already ends with a newline', (t) => {
+  const directory = makeDir(t);
+  const profile = join(directory, 'profile.ps1');
+  const original = 'before\nkeep this\n';
+  writeFileSync(profile, original);
+  installPowerShellProfiles({ profilePaths: [profile], repoRoot });
+
+  assert.ok(readFileSync(profile, 'utf8').startsWith(`before\nkeep this\n\r\n# >>> pi-presets >>>\r\n`));
+  removePowerShellProfiles({ profilePaths: [profile] });
+  assert.equal(readFileSync(profile, 'utf8'), original);
+});
+
 test('renderPowerShellBlock wraps the generated function in markers', () => {
   const block = renderPowerShellBlock('/repo');
   assert.equal(block.split('\r\n')[0], '# >>> pi-presets >>>');
