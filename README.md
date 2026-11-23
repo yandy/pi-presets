@@ -54,6 +54,24 @@ exec "$SHELL"
 
 `rc` 不用改。
 
+### 提示：给常用的 preset 配简写
+
+`setup` 结束时会给出一段示例，可以直接粘贴到 shell 里，也可以写进自己的配置文件长期生效：
+
+```fish
+# fish：abbr（输入时展开，可用 `abbr -e picode` 删除）
+abbr --add picode 'pi -ps coding'
+abbr --add piwork 'pi -ps office,design'
+```
+
+```sh
+# bash / zsh：alias
+alias picode='pi -ps coding'
+alias piwork='pi -ps office,design'
+```
+
+简写只是省去输入，等价于完整写法，不影响参数透传：`picode -p "list ts files"` 等于 `pi -ps coding -p "list ts files"`。
+
 ## 使用方法
 
 ```sh

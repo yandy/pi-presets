@@ -8,6 +8,7 @@ import {
   installShellIntegration,
   isSupportedShell,
   renderFunctionSource,
+  renderShortcutHint,
   shellIntegrationPaths,
   type SupportedShell,
 } from './shell-integration.ts';
@@ -79,6 +80,11 @@ try {
     } else {
       console.log(`Restart ${shell} or run: source ${files[1]}`);
     }
+
+    // Printed only on install: --dry-run output is eval'd, so any extra line
+    // there would break the function definition.
+    console.log('');
+    for (const line of renderShortcutHint(shell)) console.log(line);
   }
 } catch (error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
