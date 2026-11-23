@@ -644,3 +644,142 @@ test('setup --dry-run output evaluates in fish with string collect', {
     cwd,
   });
 });
+
+test('setup writes both host profiles on Windows', (t) => {
+  const directories = makeDirectories(t);
+  const hosts = join(directories.directory, 'hosts');
+  mkdirSync(hosts, { recursive: true });
+  for (const [name, profile] of [
+    ['pwsh.exe', join(directories.directory, 'ps7', 'Microsoft.PowerShell_profile.ps1')],
+    ['powershell.exe', join(directories.directory, 'ps51', 'Microsoft.PowerShell_profile.ps1')],
+  ]) {
+    const path = join(hosts, name);
+    writeFileSync(path, `#!/bin/sh\nprintf '%s\\n' '${profile}'\n`);
+    chmodSync(path, 0o755);
+  }
+
+  const result = spawnSync(process.execPath, [setupPath], {
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'win32',
+      USERPROFILE: directories.homeDir,
+      PATH: `${hosts};${process.env.PATH ?? ''}`,
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(existsSync(join(directories.directory, 'ps7', 'Microsoft.PowerShell_profile.ps1')));
+  assert.ok(existsSync(join(directories.directory, 'ps51', 'Microsoft.PowerShell_profile.ps1')));
+  assert.match(result.stdout, /function picode \{ pi -ps coding @args \}/);
+});
+
+test('setup rejects powershell off Windows and fish on Windows', (t) => {
+  const directories = makeDirectories(t);
+  const offWindows = spawnSync(process.execPath, [setupPath, '--shell', 'powershell'], {
+    env: { ...process.env, PI_PRESETS_PLATFORM: 'linux', HOME: directories.homeDir, SHELL: '/bin/bash' },
+    encoding: 'utf8',
+  });
+  const onWindows = spawnSync(process.execPath, [setupPath, '--shell', 'fish'], {
+    env: { ...process.env, PI_PRESETS_PLATFORM: 'win32', USERPROFILE: directories.homeDir },
+    encoding: 'utf8',
+  });
+
+  assert.equal(offWindows.status, 2);
+  assert.match(offWindows.stderr, /not supported on this platform/i);
+  assert.equal(onWindows.status, 2);
+  assert.match(onWindows.stderr, /powershell/i);
+});
+
+test('setup fails when no PowerShell host is found', (t) => {
+  const directories = makeDirectories(t);
+  const result = spawnSync(process.execPath, [setupPath], {
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'win32',
+      USERPROFILE: directories.homeDir,
+      ProgramFiles: join(directories.directory, 'none'),
+      SystemRoot: join(directories.directory, 'none'),
+      PATH: join(directories.directory, 'empty'),
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /pwsh\.exe/);
+});
+
+test('setup aborts the whole install when one host query fails', (t) => {
+  const directories = makeDirectories(t);
+  const hosts = join(directories.directory, 'hosts');
+  mkdirSync(hosts, { recursive: true });
+  const good = join(hosts, 'powershell.exe');
+  writeFileSync(good, `#!/bin/sh\nprintf '%s\\n' '${join(directories.directory, 'ps51', 'profile.ps1')}'\n`);
+  chmodSync(good, 0o755);
+  const bad = join(hosts, 'pwsh.exe');
+  writeFileSync(bad, '#!/bin/sh\nexit 3\n');
+  chmodSync(bad, 0o755);
+
+  const result = spawnSync(process.execPath, [setupPath], {
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'win32',
+      USERPROFILE: directories.homeDir,
+      ProgramFiles: join(directories.directory, 'none'),
+      SystemRoot: join(directories.directory, 'none'),
+      PATH: hosts,
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 1);
+  assert.equal(existsSync(join(directories.directory, 'ps51', 'profile.ps1')), false);
+});
+
+test('setup --dry-run --shell powershell prints only the function', (t) => {
+  const directories = makeDirectories(t);
+  const hosts = join(directories.directory, 'hosts');
+  mkdirSync(hosts, { recursive: true });
+  const host = join(hosts, 'pwsh.exe');
+  writeFileSync(host, `#!/bin/sh\nprintf '%s\\n' '${join(directories.directory, 'ps7', 'profile.ps1')}'\n`);
+  chmodSync(host, 0o755);
+
+  const result = spawnSync(process.execPath, [setupPath, '--dry-run', '--shell', 'powershell'], {
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'win32',
+      USERPROFILE: directories.homeDir,
+      ProgramFiles: join(directories.directory, 'none'),
+      SystemRoot: join(directories.directory, 'none'),
+      PATH: hosts,
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, renderFunctionSource('powershell', repoRoot));
+  assert.equal(existsSync(join(directories.directory, 'ps7', 'profile.ps1')), false);
+  assert.match(result.stderr, /Would write/);
+});
+
+test('teardown still strips the computed candidates when a host is broken', (t) => {
+  const directories = makeDirectories(t);
+  const profile = join(directories.homeDir, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
+  mkdirSync(dirname(profile), { recursive: true });
+  writeFileSync(profile, '# >>> pi-presets >>>\nfunction pi { }\n# <<< pi-presets <<<\n');
+
+  const result = spawnSync(process.execPath, [teardownPath], {
+    env: {
+      ...process.env,
+      PI_PRESETS_PLATFORM: 'win32',
+      USERPROFILE: directories.homeDir,
+      PATH: join(directories.directory, 'empty'),
+      ProgramFiles: join(directories.directory, 'none'),
+      SystemRoot: join(directories.directory, 'none'),
+    },
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(profile, 'utf8'), '');
+});

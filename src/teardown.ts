@@ -3,10 +3,14 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { currentPlatform } from './platform.ts';
+import { discoverPowerShellHosts } from './powershell-host.ts';
+import { powerShellProfileCandidates, removePowerShellProfiles } from './powershell-profile.ts';
 import {
   isSupportedShell,
   removeShellIntegration,
-  SUPPORTED_SHELLS,
+  supportedShells,
+  type PosixShell,
   type SupportedShell,
 } from './shell-integration.ts';
 
@@ -17,7 +21,23 @@ interface TeardownOptions {
   dryRun: boolean;
 }
 
-function parseTeardownArgs(args: readonly string[]): TeardownOptions {
+function unsupportedShellMessage(shell: string, platform: NodeJS.Platform): string {
+  const label = shell || '(not set)';
+  const choices = supportedShells(platform).join(', ');
+  if (platform === 'win32') {
+    return `Unsupported shell: ${label}. On Windows, choose ${choices}.`;
+  }
+  if (shell === 'powershell') {
+    return `Unsupported shell: ${label}. PowerShell is not supported on this platform. `
+      + `Choose ${choices}.`;
+  }
+  return `Unsupported shell: ${label}. Choose ${choices}.`;
+}
+
+function parseTeardownArgs(
+  args: readonly string[],
+  platform: NodeJS.Platform,
+): TeardownOptions {
   let selected: string | undefined;
   let dryRun = false;
   for (let index = 0; index < args.length; index += 1) {
@@ -30,49 +50,83 @@ function parseTeardownArgs(args: readonly string[]): TeardownOptions {
       throw new TeardownUsageError(`Unknown teardown option: ${argument}`);
     }
     if (index + 1 >= args.length) {
-      throw new TeardownUsageError('--shell requires fish, bash, or zsh.');
+      throw new TeardownUsageError(`--shell requires ${supportedShells(platform).join(', ')}.`);
     }
     selected = args[index + 1];
     index += 1;
   }
 
   if (selected === undefined) {
-    return { shells: SUPPORTED_SHELLS, dryRun };
+    return { shells: supportedShells(platform), dryRun };
   }
-  if (!isSupportedShell(selected)) {
-    throw new TeardownUsageError(
-      `Unsupported shell: ${selected || '(not set)'}. Choose fish, bash, or zsh.`,
-    );
+  if (!isSupportedShell(selected, platform)) {
+    throw new TeardownUsageError(unsupportedShellMessage(selected, platform));
   }
   return { shells: [selected], dryRun };
 }
 
 try {
-  const { shells, dryRun } = parseTeardownArgs(process.argv.slice(2));
+  const platform = currentPlatform(process.env);
+  const { shells, dryRun } = parseTeardownArgs(process.argv.slice(2), platform);
   const homeDir = process.env.HOME || homedir();
   const configHome = process.env.XDG_CONFIG_HOME || join(homeDir, '.config');
+  const posixShells = shells.filter((shell): shell is PosixShell => shell !== 'powershell');
   const { files, rcFiles, keptFiles } = removeShellIntegration({
-    shells,
+    shells: posixShells,
     homeDir,
     configHome,
     dryRun,
   });
 
-  if (files.length === 0 && rcFiles.length === 0 && keptFiles.length === 0) {
+  const lines: string[] = [];
+  for (const file of files) {
+    lines.push(`${dryRun ? 'Would remove' : 'Removed'}: ${file}`);
+  }
+  for (const file of rcFiles) {
+    lines.push(
+      `${dryRun ? 'Would strip the managed block from' : 'Stripped the managed block from'}: ${file}`,
+    );
+  }
+  for (const file of keptFiles) {
+    lines.push(`Kept: ${file} (still sourced by another shell rc)`);
+  }
+
+  if (platform === 'win32' && shells.includes('powershell')) {
+    const { hosts, failures } = discoverPowerShellHosts({
+      platform,
+      env: process.env,
+      pathValue: process.env.PATH ?? '',
+    });
+    // A broken host must not block the cleanup: fall back to the computed
+    // profile locations instead of leaving the block behind.
+    for (const failure of failures) {
+      console.error(
+        `pi-presets teardown: ${failure.message}; looking at the default profile paths instead.`,
+      );
+    }
+
+    const candidates = [...new Set([
+      ...hosts.map((host) => host.profilePath),
+      ...powerShellProfileCandidates({ env: process.env }),
+    ])];
+    if (dryRun) {
+      if (candidates.length > 0) {
+        lines.push(
+          `Would check these PowerShell profiles for a managed block: ${candidates.join(', ')}`,
+        );
+      }
+    } else {
+      for (const file of removePowerShellProfiles({ profilePaths: candidates })) {
+        lines.push(`Stripped the managed block from: ${file}`);
+      }
+    }
+  }
+
+  if (lines.length === 0) {
     console.log('Nothing to remove: no pi-presets shell integration found.');
   } else {
     if (dryRun) console.log('Dry run: nothing was written.');
-    for (const file of files) {
-      console.log(`${dryRun ? 'Would remove' : 'Removed'}: ${file}`);
-    }
-    for (const file of rcFiles) {
-      console.log(
-        `${dryRun ? 'Would strip the managed block from' : 'Stripped the managed block from'}: ${file}`,
-      );
-    }
-    for (const file of keptFiles) {
-      console.log(`Kept: ${file} (still sourced by another shell rc)`);
-    }
+    for (const line of lines) console.log(line);
   }
 } catch (error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
