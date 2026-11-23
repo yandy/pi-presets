@@ -418,7 +418,7 @@ const bashLookup = spawnSync('sh', ['-c', 'command -v "$1"', 'shell-lookup', 'ba
 const bashPath = (bashLookup.stdout ?? '').trim();
 
 test('setup --dry-run output evaluates into a working function', {
-  skip: bashLookup.status !== 0,
+  skip: process.platform === 'win32' || bashLookup.status !== 0,
   timeout: 5000,
 }, (t) => {
   const directories = makeDirectories(t);
@@ -743,7 +743,7 @@ test('setup fails when no PowerShell host is found', (t) => {
     encoding: 'utf8',
   });
 
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 1, `${result.stdout}${result.stderr}`);
   assert.match(result.stderr, /pwsh\.exe/);
 });
 
@@ -823,7 +823,7 @@ test('setup --dry-run --shell powershell fails when no host is found', (t) => {
     encoding: 'utf8',
   });
 
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 1, `${result.stdout}${result.stderr}`);
   assert.equal(result.stdout, '');
   assert.match(result.stderr, /No PowerShell host found/);
   assert.match(result.stderr, /pwsh\.exe/);
