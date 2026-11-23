@@ -364,6 +364,18 @@ test('removal strips a block from a CRLF file byte for byte', (t) => {
   assert.equal(readFileSync(profile, 'utf8'), original);
 });
 
+test('removal restores an LF-only profile that already ends with a newline', (t) => {
+  const directory = makeDir(t);
+  const profile = join(directory, 'profile.ps1');
+  const original = 'before\nkeep this\n';
+  writeFileSync(profile, original);
+  installPowerShellProfiles({ profilePaths: [profile], repoRoot });
+
+  assert.ok(readFileSync(profile, 'utf8').startsWith(`before\nkeep this\n\r\n# >>> pi-presets >>>\r\n`));
+  removePowerShellProfiles({ profilePaths: [profile] });
+  assert.equal(readFileSync(profile, 'utf8'), original);
+});
+
 test('renderPowerShellBlock wraps the generated function in markers', () => {
   const block = renderPowerShellBlock('/repo');
   assert.equal(block.split('\r\n')[0], '# >>> pi-presets >>>');
@@ -380,7 +392,7 @@ Expected: FAIL，`Cannot find module '../src/powershell-profile.ts'`
 - [ ] **Step 3: 改造 `src/shell-integration.ts` 的共享工具**
 
 - `START_MARKER` / `END_MARKER`、`locateManagedBlock`、`updateRc`、`stripManagedBlock` 加 `export`。
-- `updateRc(original, block, source, eol = '\n')`：末尾换行判断与分隔空行都用 `eol`。
+- `updateRc(original, block, source, eol = '\n')`：**末尾换行判断用 `\n`**（已以 `\n` 或 `\r\n` 结尾的文件不再补换行，否则 LF 文件往返会多出一个 CRLF），分隔空行用 `eol`。
 - `stripManagedBlock(original, source)`：判断上一个 EOL 时同时接受 `\r\n` 与 `\n`（`prefix` 以 `\r\n\r\n` 结尾就去掉一个 `\r\n`，否则以 `\n\n` 结尾去掉一个 `\n`；`suffix` 以 `\r\n` 开头去 `\r\n`，否则以 `\n` 开头去 `\n`）。POSIX 现有行为不变。
 - 新增 `renderPowerShellFunction(repoRoot: string): string`：
 
