@@ -2,40 +2,9 @@
   "name": "@yandy/pi-preset-design",
   "version": "0.1.0",
   "private": true,
-  "description": "Pi 组合包：设计相关",
-  "files": [
-    "package.json",
-    "package-lock.json",
-    "CHANGELOG.md",
-    "README.md",
-    ".agents/",
-    "skills/",
-    "prompts/",
-    "themes/"
+  "description": "Pi 组合包：设计相关（空占位）",
+  "keywords": [
+    "pi-package"
   ],
-  "dependencies": {
-  },
-  "pi": {
-    "extensions": [
-      "node_modules/*/extensions",
-      "node_modules/@*/*/extensions"
-    ],
-    "skills": [
-      "./skills",
-      "./.agents/skills",
-      "node_modules/*/skills",
-      "node_modules/@*/*/skills"
-    ],
-    "prompts": [
-      "./prompts",
-      "node_modules/*/prompts",
-      "node_modules/@*/*/prompts"
-    ],
-    "themes": [
-      "./themes",
-      "node_modules/*/themes",
-      "node_modules/@*/*/themes"
-    ],
-    "changelogPath": "./CHANGELOG.md"
-  }
+  "license": "MIT"
 }
